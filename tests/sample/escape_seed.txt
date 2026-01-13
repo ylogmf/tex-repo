@@ -1,0 +1,5 @@
+Specials: % $ _ { } # & ~ ^ \
+
+Mix of tokens _%$ and braces{}
+UTF-8: 中文 characters stay
+Plain line with ampersand & and hash #

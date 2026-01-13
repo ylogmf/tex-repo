@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# tex-repo wrapper - delegates to Python implementation
+
+# Find the directory containing the actual script (resolve symlinks)
+if [[ -L "${BASH_SOURCE[0]}" ]]; then
+    # Script is a symlink, resolve it
+    SCRIPT_PATH="$(readlink "${BASH_SOURCE[0]}")"
+    # Handle relative symlinks
+    if [[ "$SCRIPT_PATH" != /* ]]; then
+        SCRIPT_PATH="$(dirname "${BASH_SOURCE[0]}")/$SCRIPT_PATH"
+    fi
+else
+    SCRIPT_PATH="${BASH_SOURCE[0]}"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+# Add the script directory to PYTHONPATH so Python can find the texrepo package
+export PYTHONPATH="$SCRIPT_DIR:${PYTHONPATH:-}"
+
+# Execute the Python module
+exec python3 -m texrepo "$@"
