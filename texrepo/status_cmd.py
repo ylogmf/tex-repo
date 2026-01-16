@@ -14,10 +14,56 @@ class StatusResult(NamedTuple):
     messages: List[str]
 
 
-class StatusSummary(NamedTuple):
-    errors: int
-    warnings: int 
-    ignored: int
+class StatusReport:
+    """Unified status report that tracks all findings."""
+    def __init__(self):
+        self.errors = 0
+        self.warnings = 0
+        self.violations = 0
+        self.ignored = 0
+        self.messages = []
+    
+    def add_error(self, message: str):
+        """Add an error message and increment error count."""
+        self.errors += 1
+        self.messages.append(message)
+    
+    def add_warning(self, message: str):
+        """Add a warning message and increment warning count."""
+        self.warnings += 1
+        self.messages.append(message)
+    
+    def add_violation(self, message: str):
+        """Add a violation message and increment violation count."""
+        self.violations += 1
+        self.messages.append(message)
+    
+    def add_ignored(self, message: str = None):
+        """Add an ignored item and increment ignored count."""
+        self.ignored += 1
+        if message:
+            self.messages.append(message)
+    
+    def add_info(self, message: str):
+        """Add an informational message."""
+        self.messages.append(message)
+    
+    def is_success(self) -> bool:
+        """Return True if there are no errors or violations."""
+        return self.errors == 0 and self.violations == 0
+    
+    def extend_from_result(self, result: 'StatusResult', ignore_patterns: Set[str] = None, repo_root: Path = None):
+        """Extend this report with results from a StatusResult, properly categorizing messages."""
+        for msg in result.messages:
+            if "❌" in msg:
+                self.add_error(msg)
+            elif "⚠️" in msg and "Unexpected item" in msg and ignore_patterns and repo_root:
+                # Try to re-classify unexpected items based on ignore patterns
+                self.add_violation(msg)
+            elif "⚠️" in msg:
+                self.add_warning(msg)
+            else:
+                self.add_info(msg)
 
 
 def load_gitignore_patterns(repo_root: Path) -> Set[str]:
@@ -31,6 +77,10 @@ def load_gitignore_patterns(repo_root: Path) -> Set[str]:
     # Always ignore common OS artifacts
     patterns.add('.DS_Store')
     patterns.add('Thumbs.db')
+    patterns.add('Desktop.ini')
+    patterns.add('._*')
+    patterns.add('.AppleDouble')
+    patterns.add('.LSOverride')
     
     gitignore_path = repo_root / '.gitignore'
     if gitignore_path.exists():
@@ -106,67 +156,97 @@ def cmd_status(args) -> int:
 
 def check_repo_status(repo_root: Path) -> StatusResult:
     """Check repository structural compliance."""
-    messages = []
-    is_compliant = True
-    errors = 0
-    warnings = 0
-    ignored = 0
+    report = StatusReport()
 
     # Load gitignore patterns
     ignore_patterns = load_gitignore_patterns(repo_root)
 
-    messages.append(f"📂 Repository: {repo_root}")
-    messages.append("")
+    report.add_info(f"📂 Repository: {repo_root}")
+    report.add_info("")
 
     # Check top-level stages
     stage_status = check_stages(repo_root, ignore_patterns)
-    messages.extend(stage_status.messages)
-    is_compliant &= stage_status.is_compliant
-    errors += sum(1 for msg in stage_status.messages if "❌" in msg)
-    ignored += sum(1 for msg in stage_status.messages if "ignored" in msg.lower())
+    for msg in stage_status.messages:
+        if "❌" in msg:
+            report.add_error(msg)
+        elif "⚠️" in msg:
+            report.add_violation(msg)
+        elif "ignored" in msg.lower() and "ℹ️" in msg:
+            # Extract ignored count from message
+            import re
+            match = re.search(r'ignored (\d+)', msg)
+            if match:
+                count = int(match.group(1))
+                report.ignored += count
+            report.add_info(msg)
+        else:
+            report.add_info(msg)
 
-    # Check core stage specifically
-    core_status = check_core_stage(repo_root)
-    messages.extend(core_status.messages)
-    is_compliant &= core_status.is_compliant
-    errors += sum(1 for msg in core_status.messages if "❌" in msg)
+    # Check core stage specifically  
+    core_status = check_core_stage(repo_root, ignore_patterns)
+    for msg in core_status.messages:
+        if "❌" in msg:
+            report.add_error(msg)
+        elif "⚠️" in msg and "Unexpected item" in msg:
+            report.add_violation(msg)
+        elif "ignored" in msg.lower() and "ℹ️" in msg:
+            # Extract ignored count from message
+            import re
+            match = re.search(r'ignored (\d+)', msg)
+            if match:
+                count = int(match.group(1))
+                report.ignored += count
+            report.add_info(msg)
+        else:
+            report.add_info(msg)
 
     # Check domains in stages 01-04
     domains_status = check_domains(repo_root)
-    messages.extend(domains_status.messages)
-    is_compliant &= domains_status.is_compliant
-    errors += sum(1 for msg in domains_status.messages if "❌" in msg)
+    for msg in domains_status.messages:
+        if "❌" in msg:
+            report.add_error(msg)
+        elif "⚠️" in msg:
+            report.add_violation(msg)
+        else:
+            report.add_info(msg)
 
     # Check papers
     papers_status = check_papers(repo_root)
-    messages.extend(papers_status.messages)
-    is_compliant &= papers_status.is_compliant
-    errors += sum(1 for msg in papers_status.messages if "❌" in msg)
+    for msg in papers_status.messages:
+        if "❌" in msg:
+            report.add_error(msg)
+        elif "⚠️" in msg:
+            report.add_warning(msg)  # Paper issues are warnings, not violations
+        else:
+            report.add_info(msg)
 
     # Check metadata warnings (doesn't affect compliance)
     metadata_status = check_metadata_warnings(repo_root)
-    messages.extend(metadata_status.messages)
-    warnings += sum(1 for msg in metadata_status.messages if "⚠️" in msg)
-    # Note: metadata warnings don't affect compliance status
+    for msg in metadata_status.messages:
+        if "⚠️" in msg:
+            report.add_warning(msg)
+        else:
+            report.add_info(msg)
 
     # Report ignored items summary if any
-    if ignored > 0:
-        messages.append(f"ℹ️ Ignoring {ignored} files matched by .gitignore")
-        messages.append("")
+    if report.ignored > 0:
+        report.add_info(f"ℹ️ Ignoring {report.ignored} files matched by .gitignore")
+        report.add_info("")
 
     # Status summary
-    messages.append("Status summary:")
-    messages.append(f"  errors: {errors}")
-    messages.append(f"  warnings: {warnings}")
-    messages.append(f"  ignored: {ignored}")
-    messages.append("")
+    report.add_info("Status summary:")
+    report.add_info(f"  errors: {report.errors}")
+    report.add_info(f"  warnings: {report.warnings}")
+    report.add_info(f"  violations: {report.violations}")
+    report.add_info(f"  ignored: {report.ignored}")
+    report.add_info("")
 
-    if is_compliant:
-        messages.append("✅ Repository structure is fully compliant!")
+    if report.is_success():
+        report.add_info("✅ Repository structure is fully compliant!")
     else:
-        messages.append("❌ Repository structure has violations!")
+        report.add_info("❌ Repository structure has violations!")
 
-    return StatusResult(is_compliant, messages)
+    return StatusResult(report.is_success(), report.messages)
 
 
 def check_stages(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
@@ -216,10 +296,15 @@ def check_stages(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
     return StatusResult(is_compliant, messages)
 
 
-def check_core_stage(repo_root: Path) -> StatusResult:
+def check_core_stage(repo_root: Path, ignore_patterns: Set[str] = None) -> StatusResult:
     """Check core stage compliance."""
     messages = ["🔍 Checking core stage (00_core)..."]
     is_compliant = True
+    violations = 0
+    ignored_count = 0
+
+    if ignore_patterns is None:
+        ignore_patterns = load_gitignore_patterns(repo_root)
 
     core_stage_path = repo_root / CORE_STAGE
     if not core_stage_path.exists():
@@ -246,8 +331,19 @@ def check_core_stage(repo_root: Path) -> StatusResult:
     # Check for unexpected items in 00_core
     for item in core_stage_path.iterdir():
         if item.name != "core":
+            # Check if this item should be ignored
+            if is_ignored_by_patterns(item, repo_root, ignore_patterns):
+                ignored_count += 1
+                continue
+            
+            # This is a violation - unexpected item that's not ignored
             messages.append(f"  ⚠️  Unexpected item in 00_core: {item.name}")
+            violations += 1
             is_compliant = False
+    
+    # Add ignored count info if any
+    if ignored_count > 0:
+        messages.append(f"  ℹ️ ignored {ignored_count} items in 00_core")
 
     messages.append("")
     return StatusResult(is_compliant, messages)
@@ -292,6 +388,7 @@ def check_domains(repo_root: Path) -> StatusResult:
             expected = list(range(len(domain_numbers)))
             if domain_numbers != expected:
                 messages.append(f"    ⚠️  Domain numbering not contiguous: {domain_numbers} (expected: {expected})")
+                # Note: Non-contiguous numbering is a violation, not just a warning
                 is_compliant = False
 
     messages.append("")
