@@ -2,6 +2,28 @@
 
 A lightweight CLI that enforces a SPEC-centered structure for research papers. The Spec is the immutable constraint layer; all other work depends on it without modifying it.
 
+## Installation
+
+For developers and contributors, install in editable mode:
+
+```bash
+cd tex-repo  # Navigate to this repository
+pip install -e .
+```
+
+After installation, the `tex-repo` command will be available system-wide:
+
+```bash
+tex-repo init my-project
+cd my-project
+tex-repo status
+```
+
+Alternatively, you can use the module directly:
+```bash
+python -m texrepo <command>
+```
+
 ## Structure and Semantics
 - **SPEC**: Defines primitives, constructors, forbidden constructs, and dependency direction. Exactly one Spec paper lives at `SPEC/spec`.
 - **FORMALISM (01_formalism)**: Admissible forms, closures, and representations grounded in the Spec.

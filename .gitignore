@@ -69,6 +69,7 @@ Desktop.ini
 tmp/
 scratch/
 example_repo/
+tests/tmp_smoke/
 
 ############################
 # Do NOT ignore

@@ -17,7 +17,8 @@ def find_repo_root(start=None) -> Path:
     for cur in [d, *d.parents]:
         if (cur / ".paperrepo").is_file():
             return cur
-    die("Not inside a tex repo (missing .paperrepo). Run: tex-repo init <name>")
+    from .errors import ErrorCode, format_error
+    die(format_error(ErrorCode.NOT_IN_REPO, "Not inside a tex repo (missing .paperrepo). Run: tex-repo init <name>"))
 
 
 def normalize_rel_path(p: str) -> str:

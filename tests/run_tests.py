@@ -50,6 +50,7 @@ def main():
     test_files = [
         (test_dir / 'code' / 'test_enhancements.py', 'Enhancement Unit Tests'),
         (test_dir / 'sample' / 'test_sample_workflow.py', 'Complete Workflow Test'),
+        (test_dir / 'test_smoke_cli.py', 'CLI Smoke Tests'),
     ]
     
     results = []

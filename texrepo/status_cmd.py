@@ -7,6 +7,7 @@ import fnmatch
 from .common import find_repo_root, TexRepoError
 from .rules import SPEC_DIR, SPEC_PAPER_REL, STAGE_PIPELINE
 from .meta_cmd import parse_paperrepo_metadata
+from .errors import ErrorCode, format_error
 
 
 class StatusResult(NamedTuple):
@@ -55,7 +56,7 @@ class StatusReport:
     def extend_from_result(self, result: 'StatusResult', ignore_patterns: Set[str] = None, repo_root: Path = None):
         """Extend this report with results from a StatusResult, properly categorizing messages."""
         for msg in result.messages:
-            if "❌" in msg:
+            if msg.strip().startswith("E[") or "❌" in msg:
                 self.add_error(msg)
             elif "ignored" in msg.lower() and "ℹ️" in msg:
                 import re
@@ -213,7 +214,7 @@ def check_top_level_structure(repo_root: Path, ignore_patterns: Set[str]) -> Sta
         if path.is_dir():
             messages.append(f"  ✅ {name}")
         else:
-            messages.append(f"  ❌ {name} (missing)")
+            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'{name} (missing)')}")
             is_compliant = False
 
     allowed_extras = {"shared", "scripts", "98_context", "99_legacy", "releases"}
@@ -226,7 +227,7 @@ def check_top_level_structure(repo_root: Path, ignore_patterns: Set[str]) -> Sta
             if is_ignored_by_patterns(item, repo_root, ignore_patterns):
                 ignored_count += 1
                 continue
-            messages.append(f"  ❌ Unexpected top-level directory: {item.name}")
+            messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected top-level directory', item.name)}")
             is_compliant = False
         else:
             if is_ignored_by_patterns(item, repo_root, ignore_patterns):
@@ -247,25 +248,25 @@ def check_spec_area(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
 
     spec_root = repo_root / SPEC_DIR
     if not spec_root.exists():
-        messages.append("  ❌ SPEC directory missing")
+        messages.append(f"  {format_error(ErrorCode.SPEC_MISSING, 'SPEC directory missing')}")
         messages.append("")
         return StatusResult(False, messages)
 
     spec_readme = spec_root / "README.md"
     if not spec_readme.exists():
-        messages.append("  ❌ Missing README.md in SPEC/")
+        messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md', 'SPEC/')}")
         is_compliant = False
 
     spec_paper_dir = repo_root / SPEC_PAPER_REL
     if spec_paper_dir.exists():
         if not (spec_paper_dir / "README.md").exists():
-            messages.append("  ❌ Missing README.md in SPEC/spec")
+            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md', 'SPEC/spec')}")
             is_compliant = False
         if not (spec_paper_dir / "main.tex").exists():
-            messages.append("  ❌ SPEC/spec/main.tex missing")
+            messages.append(f"  {format_error(ErrorCode.MAIN_TEX_MISSING, 'main.tex missing', 'SPEC/spec')}")
             is_compliant = False
     else:
-        messages.append("  ❌ Spec paper directory missing at SPEC/spec")
+        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'Spec paper directory missing', 'SPEC/spec')}")
         is_compliant = False
 
     for item in spec_root.iterdir():
@@ -276,7 +277,7 @@ def check_spec_area(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
         if is_ignored_by_patterns(item, repo_root, ignore_patterns):
             ignored_count += 1
             continue
-        messages.append(f"  ❌ Unexpected item in SPEC/: {item.name}")
+        messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected item in SPEC/', item.name)}")
         is_compliant = False
 
     if ignored_count > 0:
@@ -298,7 +299,7 @@ def check_stages_domains_and_papers(repo_root: Path, ignore_patterns: Set[str]) 
 
         stage_readme = stage_path / "README.md"
         if not stage_readme.exists():
-            messages.append(f"  ❌ Missing README.md in {stage}")
+            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md', stage)}")
             is_compliant = False
 
         for item in stage_path.iterdir():
@@ -310,14 +311,14 @@ def check_stages_domains_and_papers(repo_root: Path, ignore_patterns: Set[str]) 
             if item.is_dir():
                 # Papers are not allowed directly under stages
                 if (item / "main.tex").exists():
-                    messages.append(f"  ❌ Paper directly under stage: {stage}/{item.name} (papers must live inside domains; Spec lives at SPEC/spec)")
+                    messages.append(f"  {format_error(ErrorCode.INVALID_PLACEMENT, 'Paper directly under stage', f'{stage}/{item.name}')}")
                     is_compliant = False
                     continue
 
                 # Domain folder
                 domain_readme = item / "README.md"
                 if not domain_readme.exists():
-                    messages.append(f"  ❌ Missing README.md in domain: {stage}/{item.name}")
+                    messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md in domain', f'{stage}/{item.name}')}")
                     is_compliant = False
 
                 for paper_dir in item.iterdir():
@@ -328,7 +329,7 @@ def check_stages_domains_and_papers(repo_root: Path, ignore_patterns: Set[str]) 
                     if (paper_dir / "main.tex").exists():
                         if not (paper_dir / "README.md").exists():
                             rel_path = paper_dir.relative_to(repo_root)
-                            messages.append(f"  ❌ Missing README.md in paper: {rel_path}")
+                            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md in paper', str(rel_path))}")
                             is_compliant = False
                     # Non-paper subdirectories are allowed silently
 

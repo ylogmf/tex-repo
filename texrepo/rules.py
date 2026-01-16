@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .common import die
+from .errors import ErrorCode, format_error
 
 SPEC_DIR = "SPEC"
 SPEC_PAPER_REL = Path(SPEC_DIR) / "spec"
@@ -26,15 +27,15 @@ def assert_stage_parent_allowed(parent_rel: Path) -> None:
     # nd allowed only under stages 01-04 (or any subdir inside them)
     top = parent_rel.parts[0] if parent_rel.parts else ""
     if top == SPEC_DIR:
-        die("Cannot create domains under Spec. Spec is unique and immutable.")
+        die(format_error(ErrorCode.SPEC_IMMUTABLE, "Cannot create domains under Spec"))
     if top not in STAGE_PIPELINE:
-        die(f"Parent must be under a known stage: {', '.join(STAGE_PIPELINE)}")
+        die(format_error(ErrorCode.INVALID_PARENT, f"Parent must be under a known stage: {', '.join(STAGE_PIPELINE)}"))
 
 
 def assert_paper_allowed(domain_rel: Path) -> None:
     # np allowed only under stages 01-04
     top = domain_rel.parts[0] if domain_rel.parts else ""
     if top == SPEC_DIR:
-        die("Cannot create papers under Spec. The Spec paper already exists.")
+        die(format_error(ErrorCode.SPEC_IMMUTABLE, "Cannot create papers under Spec"))
     if top not in STAGE_PIPELINE:
-        die(f"Paper must be inside stages 01-04. Known stages: {', '.join(STAGE_PIPELINE)}")
+        die(format_error(ErrorCode.INVALID_PARENT, f"Paper must be inside stages 01-04. Known stages: {', '.join(STAGE_PIPELINE)}"))
