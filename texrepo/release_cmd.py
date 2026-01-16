@@ -57,7 +57,7 @@ def extract_latex_title(main_tex_path: Path) -> str:
         title = re.sub(r'\\[a-zA-Z]+\*?(?:\[[^\]]*\])?\s*(?:\{[^}]*\})*', '', title)
         title = re.sub(r'[{}\\]', '', title)
         
-        # Normalize to lowercase with underscores
+        # Normalize to lowercase with separators
         title = title.lower()
         title = re.sub(r'[^a-z0-9\s]', '', title)
         title = re.sub(r'\s+', '_', title)

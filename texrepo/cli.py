@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="""
 Initialize a new tex-repo. You can provide either a repository name or a path to a
 plain text file (.txt). When a text file is provided, its content is imported into
-the core paper's first section.
+the Spec paper's first section.
 """,
     )
     p_init.add_argument(
@@ -37,18 +37,18 @@ the core paper's first section.
     p_init.add_argument(
         "source_text",
         nargs="?",
-        help="Optional path to a .txt file whose contents seed 00_core/core/sections/section_1.tex",
+        help="Optional path to a .txt file whose contents seed SPEC/spec/sections/section_1.tex",
     )
     p_init.set_defaults(fn=cmd_init)
 
     p_nd = sub.add_parser("nd", help="Create a new research domain under a stage with automatic numbering (00_, 01_, etc.)")
-    p_nd.add_argument("parent_path", help="Parent stage path (e.g., '01_derivations') or existing domain path")
+    p_nd.add_argument("parent_path", help="Parent stage path (e.g., '01_formalism') or existing domain path")
     p_nd.add_argument("domain_name", help="Descriptive name for the research domain (e.g., 'quantum-mechanics')")
     p_nd.set_defaults(fn=cmd_nd)
 
     p_np = sub.add_parser("np", help="Create a new paper with LaTeX template, sections, and bibliography within a domain")
     # Supports: np domain_path slug [title]  OR  np domain_path/slug [title]
-    p_np.add_argument("path_or_domain", help="Target domain path (e.g., '01_derivations/00_algebra') or full paper path")
+    p_np.add_argument("path_or_domain", help="Target domain path (e.g., '01_formalism/00_algebra') or full paper path")
     p_np.add_argument("maybe_slug", nargs="?", help="URL-friendly paper identifier (optional if included in first argument)")
     p_np.add_argument("title", nargs="?", default="Untitled Paper", help="Human-readable title for the paper (default: 'Untitled Paper')")
     p_np.set_defaults(fn=cmd_np)
@@ -84,7 +84,7 @@ Release bundles are stored at the repository level in releases/ directory and tr
 index.jsonl for audit trail. Each release creates a unique directory with paper-aware naming.
 """)
     p_release.add_argument("paper_path", 
-                          help="Path to paper directory relative to repository root (e.g., '00_core/core', '01_derivations/lemma1')")
+                          help="Path to paper directory relative to repository root (e.g., 'SPEC/spec', '01_formalism/lemma1')")
     p_release.add_argument("--label", 
                           help="Descriptive label for the release (e.g., 'submitted', 'camera-ready'). Optional.")
     p_release.add_argument("--engine", default="latexmk", choices=["latexmk", "pdflatex"], 

@@ -14,10 +14,13 @@ def run_test_file(test_file, description):
     print(f"\n{'='*60}")
     print(f"🧪 {description}")
     print('='*60)
+    repo_root = Path(__file__).resolve().parent.parent
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{repo_root}{os.pathsep}{env.get('PYTHONPATH', '')}"
     
     try:
         result = subprocess.run([sys.executable, str(test_file)], 
-                              capture_output=True, text=True, cwd=test_file.parent)
+                              capture_output=True, text=True, cwd=test_file.parent, env=env)
         
         print(result.stdout)
         if result.stderr:

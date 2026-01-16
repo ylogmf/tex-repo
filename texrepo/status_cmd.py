@@ -5,7 +5,7 @@ from typing import NamedTuple, List, Set
 import fnmatch
 
 from .common import find_repo_root, TexRepoError
-from .rules import STAGES, CORE_STAGE, CORE_PAPER_REL
+from .rules import SPEC_DIR, SPEC_PAPER_REL, STAGE_PIPELINE
 from .meta_cmd import parse_paperrepo_metadata
 
 
@@ -57,6 +57,12 @@ class StatusReport:
         for msg in result.messages:
             if "❌" in msg:
                 self.add_error(msg)
+            elif "ignored" in msg.lower() and "ℹ️" in msg:
+                import re
+                match = re.search(r'ignored (\d+)', msg)
+                if match:
+                    self.ignored += int(match.group(1))
+                self.add_info(msg)
             elif "⚠️" in msg and "Unexpected item" in msg and ignore_patterns and repo_root:
                 # Try to re-classify unexpected items based on ignore patterns
                 self.add_violation(msg)
@@ -164,69 +170,15 @@ def check_repo_status(repo_root: Path) -> StatusResult:
     report.add_info(f"📂 Repository: {repo_root}")
     report.add_info("")
 
-    # Check top-level stages
-    stage_status = check_stages(repo_root, ignore_patterns)
-    for msg in stage_status.messages:
-        if "❌" in msg:
-            report.add_error(msg)
-        elif "⚠️" in msg:
-            report.add_violation(msg)
-        elif "ignored" in msg.lower() and "ℹ️" in msg:
-            # Extract ignored count from message
-            import re
-            match = re.search(r'ignored (\d+)', msg)
-            if match:
-                count = int(match.group(1))
-                report.ignored += count
-            report.add_info(msg)
-        else:
-            report.add_info(msg)
+    checks = [
+        check_top_level_structure(repo_root, ignore_patterns),
+        check_spec_area(repo_root, ignore_patterns),
+        check_stages_domains_and_papers(repo_root, ignore_patterns),
+        check_metadata_warnings(repo_root),
+    ]
 
-    # Check core stage specifically  
-    core_status = check_core_stage(repo_root, ignore_patterns)
-    for msg in core_status.messages:
-        if "❌" in msg:
-            report.add_error(msg)
-        elif "⚠️" in msg and "Unexpected item" in msg:
-            report.add_violation(msg)
-        elif "ignored" in msg.lower() and "ℹ️" in msg:
-            # Extract ignored count from message
-            import re
-            match = re.search(r'ignored (\d+)', msg)
-            if match:
-                count = int(match.group(1))
-                report.ignored += count
-            report.add_info(msg)
-        else:
-            report.add_info(msg)
-
-    # Check domains in stages 01-04
-    domains_status = check_domains(repo_root)
-    for msg in domains_status.messages:
-        if "❌" in msg:
-            report.add_error(msg)
-        elif "⚠️" in msg:
-            report.add_violation(msg)
-        else:
-            report.add_info(msg)
-
-    # Check papers
-    papers_status = check_papers(repo_root)
-    for msg in papers_status.messages:
-        if "❌" in msg:
-            report.add_error(msg)
-        elif "⚠️" in msg:
-            report.add_warning(msg)  # Paper issues are warnings, not violations
-        else:
-            report.add_info(msg)
-
-    # Check metadata warnings (doesn't affect compliance)
-    metadata_status = check_metadata_warnings(repo_root)
-    for msg in metadata_status.messages:
-        if "⚠️" in msg:
-            report.add_warning(msg)
-        else:
-            report.add_info(msg)
+    for result in checks:
+        report.extend_from_result(result, ignore_patterns, repo_root)
 
     # Report ignored items summary if any
     if report.ignored > 0:
@@ -249,43 +201,34 @@ def check_repo_status(repo_root: Path) -> StatusResult:
     return StatusResult(report.is_success(), report.messages)
 
 
-def check_stages(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
-    """Check presence and order of top-level stages."""
-    messages = ["🔍 Checking top-level stages..."]
+def check_top_level_structure(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
+    """Check required top-level directories and unexpected items."""
+    messages = ["🔍 Checking top-level structure..."]
     is_compliant = True
     ignored_count = 0
 
-    for stage in STAGES:
-        stage_path = repo_root / stage
-        if stage_path.exists() and stage_path.is_dir():
-            messages.append(f"  ✅ {stage}")
+    required = [SPEC_DIR, *STAGE_PIPELINE]
+    for name in required:
+        path = repo_root / name
+        if path.is_dir():
+            messages.append(f"  ✅ {name}")
         else:
-            messages.append(f"  ❌ {stage} (missing)")
+            messages.append(f"  ❌ {name} (missing)")
             is_compliant = False
 
-    # Check for unexpected top-level directories
-    allowed_extras = ["shared", "scripts", "98_context", "99_legacy"]
+    allowed_extras = {"shared", "scripts", "98_context", "99_legacy", "releases"}
     for item in repo_root.iterdir():
-        if item.name.startswith('.'):
-            # Skip hidden files/directories (like .git, .paperrepo, etc.)
+        if item.name.startswith("."):
             continue
-            
-        if item.is_dir() and item.name not in STAGES and item.name not in allowed_extras:
-            # Check if this item should be ignored
+        if item.is_dir():
+            if item.name in required or item.name in allowed_extras:
+                continue
             if is_ignored_by_patterns(item, repo_root, ignore_patterns):
                 ignored_count += 1
                 continue
-                
-            # Check if it looks like a stage (NN_name pattern)
-            name = item.name
-            if len(name) >= 3 and name[:2].isdigit() and name[2] == "_":
-                messages.append(f"  ⚠️  {name} (unexpected stage)")
-                is_compliant = False
-            else:
-                messages.append(f"  ⚠️  {name} (unexpected directory)")
-                is_compliant = False
-        elif item.is_file():
-            # Check if top-level files should be ignored  
+            messages.append(f"  ❌ Unexpected top-level directory: {item.name}")
+            is_compliant = False
+        else:
             if is_ignored_by_patterns(item, repo_root, ignore_patterns):
                 ignored_count += 1
 
@@ -296,162 +239,99 @@ def check_stages(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
     return StatusResult(is_compliant, messages)
 
 
-def check_core_stage(repo_root: Path, ignore_patterns: Set[str] = None) -> StatusResult:
-    """Check core stage compliance."""
-    messages = ["🔍 Checking core stage (00_core)..."]
+def check_spec_area(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
+    """Validate SPEC directory, uniqueness, and README requirements."""
+    messages = ["🔍 Checking Spec..."]
     is_compliant = True
-    violations = 0
     ignored_count = 0
 
-    if ignore_patterns is None:
-        ignore_patterns = load_gitignore_patterns(repo_root)
-
-    core_stage_path = repo_root / CORE_STAGE
-    if not core_stage_path.exists():
-        messages.append("  ❌ 00_core stage missing")
+    spec_root = repo_root / SPEC_DIR
+    if not spec_root.exists():
+        messages.append("  ❌ SPEC directory missing")
         messages.append("")
         return StatusResult(False, messages)
 
-    # Check that core paper exists
-    core_paper_path = repo_root / CORE_PAPER_REL
-    if core_paper_path.exists() and core_paper_path.is_dir():
-        messages.append("  ✅ core paper directory exists")
-        
-        # Check main.tex in core paper
-        main_tex = core_paper_path / "main.tex"
-        if main_tex.exists():
-            messages.append("  ✅ core/main.tex exists")
-        else:
-            messages.append("  ❌ core/main.tex missing")
-            is_compliant = False
-    else:
-        messages.append("  ❌ core paper directory missing")
+    spec_readme = spec_root / "README.md"
+    if not spec_readme.exists():
+        messages.append("  ❌ Missing README.md in SPEC/")
         is_compliant = False
 
-    # Check for unexpected items in 00_core
-    for item in core_stage_path.iterdir():
-        if item.name != "core":
-            # Check if this item should be ignored
-            if is_ignored_by_patterns(item, repo_root, ignore_patterns):
-                ignored_count += 1
-                continue
-            
-            # This is a violation - unexpected item that's not ignored
-            messages.append(f"  ⚠️  Unexpected item in 00_core: {item.name}")
-            violations += 1
+    spec_paper_dir = repo_root / SPEC_PAPER_REL
+    if spec_paper_dir.exists():
+        if not (spec_paper_dir / "README.md").exists():
+            messages.append("  ❌ Missing README.md in SPEC/spec")
             is_compliant = False
-    
-    # Add ignored count info if any
+        if not (spec_paper_dir / "main.tex").exists():
+            messages.append("  ❌ SPEC/spec/main.tex missing")
+            is_compliant = False
+    else:
+        messages.append("  ❌ Spec paper directory missing at SPEC/spec")
+        is_compliant = False
+
+    for item in spec_root.iterdir():
+        if item.name.startswith("."):
+            continue
+        if item.name in {"README.md", "spec"}:
+            continue
+        if is_ignored_by_patterns(item, repo_root, ignore_patterns):
+            ignored_count += 1
+            continue
+        messages.append(f"  ❌ Unexpected item in SPEC/: {item.name}")
+        is_compliant = False
+
     if ignored_count > 0:
-        messages.append(f"  ℹ️ ignored {ignored_count} items in 00_core")
+        messages.append(f"  ℹ️ ignored {ignored_count} items in SPEC/")
 
     messages.append("")
     return StatusResult(is_compliant, messages)
 
 
-def check_domains(repo_root: Path) -> StatusResult:
-    """Check domain structure in stages 01-04."""
-    messages = ["🔍 Checking domains in stages 01-04..."]
+def check_stages_domains_and_papers(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
+    """Validate stage, domain, and paper placement plus README requirements."""
+    messages = ["🔍 Checking stages, domains, and papers..."]
     is_compliant = True
 
-    for stage in STAGES[1:]:  # Skip 00_core
-        stage_path = repo_root / stage
-        if not stage_path.exists():
-            continue  # Already reported in check_stages
-            
-        messages.append(f"  📁 {stage}:")
-        
-        # Get all domain directories
-        domain_dirs = []
-        for item in stage_path.iterdir():
-            if item.is_dir():
-                domain_dirs.append(item)
-        
-        if not domain_dirs:
-            messages.append("    ℹ️  No domains")
-            continue
-
-        # Check domain numbering
-        domain_numbers = []
-        for domain in domain_dirs:
-            name = domain.name
-            if len(name) >= 3 and name[:2].isdigit() and name[2] == "_":
-                domain_numbers.append(int(name[:2]))
-                messages.append(f"    ✅ {name}")
-            else:
-                messages.append(f"    ❌ {name} (invalid domain format)")
-                is_compliant = False
-
-        # Check for contiguous numbering starting from 00
-        if domain_numbers:
-            domain_numbers.sort()
-            expected = list(range(len(domain_numbers)))
-            if domain_numbers != expected:
-                messages.append(f"    ⚠️  Domain numbering not contiguous: {domain_numbers} (expected: {expected})")
-                # Note: Non-contiguous numbering is a violation, not just a warning
-                is_compliant = False
-
-    messages.append("")
-    return StatusResult(is_compliant, messages)
-
-
-def check_papers(repo_root: Path) -> StatusResult:
-    """Check paper structure and placement."""
-    messages = ["🔍 Checking papers..."]
-    is_compliant = True
-
-    # Check that papers don't exist directly under stages (except core)
-    for stage in STAGES[1:]:  # Skip 00_core
+    for stage in STAGE_PIPELINE:
         stage_path = repo_root / stage
         if not stage_path.exists():
             continue
 
+        stage_readme = stage_path / "README.md"
+        if not stage_readme.exists():
+            messages.append(f"  ❌ Missing README.md in {stage}")
+            is_compliant = False
+
         for item in stage_path.iterdir():
+            if item.name.startswith("."):
+                continue
+            if is_ignored_by_patterns(item, repo_root, ignore_patterns):
+                continue
+
             if item.is_dir():
-                # If this looks like a paper (has main.tex), it's misplaced
-                main_tex = item / "main.tex"
-                if main_tex.exists():
-                    messages.append(f"  ❌ Paper directly under stage: {stage}/{item.name}")
-                    messages.append(f"     Papers must be inside domains, not directly under stages")
+                # Papers are not allowed directly under stages
+                if (item / "main.tex").exists():
+                    messages.append(f"  ❌ Paper directly under stage: {stage}/{item.name} (papers must live inside domains; Spec lives at SPEC/spec)")
+                    is_compliant = False
+                    continue
+
+                # Domain folder
+                domain_readme = item / "README.md"
+                if not domain_readme.exists():
+                    messages.append(f"  ❌ Missing README.md in domain: {stage}/{item.name}")
                     is_compliant = False
 
-    # Check papers in domains
-    paper_count = 0
-    for stage in STAGES[1:]:  # Skip 00_core
-        stage_path = repo_root / stage
-        if not stage_path.exists():
-            continue
+                for paper_dir in item.iterdir():
+                    if not paper_dir.is_dir():
+                        continue
+                    if is_ignored_by_patterns(paper_dir, repo_root, ignore_patterns):
+                        continue
+                    if (paper_dir / "main.tex").exists():
+                        if not (paper_dir / "README.md").exists():
+                            rel_path = paper_dir.relative_to(repo_root)
+                            messages.append(f"  ❌ Missing README.md in paper: {rel_path}")
+                            is_compliant = False
+                    # Non-paper subdirectories are allowed silently
 
-        for domain in stage_path.iterdir():
-            if not domain.is_dir():
-                continue
-                
-            # Check papers in this domain
-            for item in domain.iterdir():
-                if item.is_dir():
-                    main_tex = item / "main.tex"
-                    if main_tex.exists():
-                        paper_count += 1
-                        relative_path = item.relative_to(repo_root)
-                        messages.append(f"  ✅ Paper: {relative_path}")
-                    else:
-                        # Directory without main.tex - might be a subdomain or other structure
-                        # Check if it has numbered domain format
-                        name = item.name
-                        if len(name) >= 3 and name[:2].isdigit() and name[2] == "_":
-                            # This is likely a subdomain, don't report as missing main.tex
-                            continue
-                        else:
-                            relative_path = item.relative_to(repo_root)
-                            messages.append(f"  ⚠️  Directory without main.tex: {relative_path}")
-
-    # Include core paper in count
-    core_paper = repo_root / CORE_PAPER_REL
-    if core_paper.exists() and (core_paper / "main.tex").exists():
-        paper_count += 1
-        messages.append(f"  ✅ Paper: {CORE_PAPER_REL}")
-
-    messages.append(f"  📊 Total papers found: {paper_count}")
     messages.append("")
     return StatusResult(is_compliant, messages)
 

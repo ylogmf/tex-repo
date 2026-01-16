@@ -66,6 +66,9 @@ def test_basic_workflow():
         repo_path = Path('test-repo')
         assert repo_path.exists(), "Repository directory should exist"
         assert (repo_path / '.paperrepo').exists(), ".paperrepo should exist"
+        assert (repo_path / 'SPEC' / 'README.md').exists(), "SPEC/README.md should exist"
+        assert (repo_path / 'SPEC' / 'spec' / 'README.md').exists(), "Spec paper README should exist"
+        assert (repo_path / 'SPEC' / 'spec' / 'main.tex').exists(), "Spec paper should exist"
         print("✅ Repository initialization works")
         
         # Enter the repository
@@ -82,16 +85,18 @@ def test_basic_workflow():
         result = run_texrepo(['nd', '03_applications', 'computer-vision'], cwd='.')
         assert result.returncode == 0, f"Domain creation should work: {result.stderr}"
         assert Path('03_applications/00_computer-vision').exists(), "Domain directory should exist"
+        assert (Path('03_applications/00_computer-vision/README.md')).exists(), "Domain README should be created"
         print("✅ Domain creation works")
         
-        # Test new paper creation (in derivations stage)
+        # Test new paper creation (in formalism stage)
         print("📄 Testing paper creation...")
-        result = run_texrepo(['np', '01_derivations', 'test-paper', 'My Test Paper'], cwd='.')
+        result = run_texrepo(['np', '01_formalism', 'test-paper', 'My Test Paper'], cwd='.')
         assert result.returncode == 0, f"Paper creation failed: {result.stderr}"
         
-        paper_path = Path('01_derivations/test-paper')
+        paper_path = Path('01_formalism/test-paper')
         assert paper_path.exists(), "Paper directory should exist"
         assert (paper_path / 'main.tex').exists(), "main.tex should exist"
+        assert (paper_path / 'README.md').exists(), "Paper README should exist"
         print("✅ Paper creation works")
         
         # Test config command
@@ -142,12 +147,12 @@ def test_error_conditions():
         print("✅ Invalid domain properly rejected")
         
         # Create a paper first
-        result = run_texrepo(['np', '01_derivations', 'test-paper', 'Test Paper'], cwd='.')
+        result = run_texrepo(['np', '01_formalism', 'test-paper', 'Test Paper'], cwd='.')
         assert result.returncode == 0, f"Paper creation should work: {result.stderr}"
         
         # Test duplicate paper
         print("⚠️  Testing duplicate paper creation...")
-        result = run_texrepo(['np', '01_derivations', 'test-paper', 'Duplicate Paper'], cwd='.')
+        result = run_texrepo(['np', '01_formalism', 'test-paper', 'Duplicate Paper'], cwd='.')
         assert result.returncode != 0, "Should fail with duplicate paper"
         print("✅ Duplicate paper properly rejected")
         

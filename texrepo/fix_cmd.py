@@ -6,7 +6,7 @@ from typing import List, Tuple, Optional
 from .common import find_repo_root, die, write_text
 from .config import DEFAULT_CONFIG, create_default_config
 from .meta_cmd import parse_paperrepo_metadata, sync_identity_tex
-from .rules import STAGES
+from .rules import STAGES, SPEC_DIR, SPEC_PAPER_REL, STAGE_PIPELINE
 
 POLICY_START = "# >>> tex-repo policy"
 POLICY_END = "# <<< tex-repo policy"
@@ -130,6 +130,11 @@ def _gitignore_policy_block() -> str:
     """Return gitignore policy template wrapped with markers."""
     template = _GITIGNORE_TEMPLATE.rstrip() + "\n"
     return f"{POLICY_START}\n{template}{POLICY_END}\n"
+
+
+def ensure_readme(path: Path, content: str, result: FixResult, dry_run: bool = False) -> None:
+    """Create README.md if missing without overwriting existing files."""
+    check_and_create_file(path, content, result, dry_run)
 
 
 def _apply_gitignore_policy(path: Path, result: FixResult, dry_run: bool = False) -> None:
@@ -309,24 +314,77 @@ def fix_shared_files(repo_root: Path, result: FixResult, dry_run: bool = False) 
                     result.add_created(str(shared_dir / "identity.tex"))
                 except Exception as e:
                     result.add_warning(str(shared_dir / "identity.tex"), f"cannot create ({e})")
-        else:
-            result.add_skipped(str(shared_dir / "identity.tex"), "already exists")
+    else:
+        result.add_skipped(str(shared_dir / "identity.tex"), "already exists")
 
 
-def fix_core_paper(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
-    """Fix core paper skeleton."""
-    print("Checking core paper skeleton...")
+def fix_readmes(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
+    """Ensure required README.md files exist without overwriting."""
+    print("Checking required README files...")
+
+    ensure_readme(
+        repo_root / SPEC_DIR / "README.md",
+        "# Spec\n\nThis directory holds the Spec: primitives, constructors, forbidden constructs, and dependency direction. Everything else depends on it without modifying it.\n",
+        result,
+        dry_run,
+    )
+    ensure_readme(
+        repo_root / SPEC_PAPER_REL / "README.md",
+        "# Spec Paper\n\nThe unique Spec paper for this repository. It must remain at SPEC/spec and is the immutable constraint layer.\n",
+        result,
+        dry_run,
+    )
+
+    stage_readmes = {
+        "01_formalism": "# Formalism\n\nAdmissible forms, closures, and representations derived from the Spec.\n",
+        "02_processes": "# Processes\n\nNatural processes grounded in the Spec and expressed through the formalism.\n",
+        "03_applications": "# Applications\n\nHuman-built functions, models, and tools that depend on the Spec via the formalism and processes.\n",
+        "04_testbeds": "# Testbeds\n\nExperiments and validation environments for applications derived from the Spec.\n",
+    }
+
+    # Stage README files
+    for stage in STAGE_PIPELINE:
+        ensure_readme(repo_root / stage / "README.md", stage_readmes.get(stage, ""), result, dry_run)
+
+    # Domain and paper README files
+    for stage in STAGE_PIPELINE:
+        stage_path = repo_root / stage
+        if not stage_path.exists():
+            continue
+        for domain in stage_path.iterdir():
+            if not domain.is_dir():
+                continue
+            ensure_readme(
+                domain / "README.md",
+                f"# {domain.name}\n\nDomain under {stage} that inherits constraints from the Spec.\n",
+                result,
+                dry_run,
+            )
+            for paper_dir in domain.iterdir():
+                if not paper_dir.is_dir():
+                    continue
+                if (paper_dir / "main.tex").exists():
+                    ensure_readme(
+                        paper_dir / "README.md",
+                        "# Paper\n\nThis paper depends on the Spec via its enclosing domain and stage.\n",
+                        result,
+                        dry_run,
+                    )
+
+def fix_spec_paper(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
+    """Fix Spec paper skeleton."""
+    print("Checking Spec paper skeleton...")
     
-    core_dir = repo_root / "00_core" / "core"
+    spec_dir = repo_root / SPEC_PAPER_REL
     
-    # Core directory structure
-    check_and_create_directory(core_dir, result, dry_run)
-    check_and_create_directory(core_dir / "sections", result, dry_run)
-    check_and_create_directory(core_dir / "build", result, dry_run)
+    # Spec directory structure
+    check_and_create_directory(spec_dir, result, dry_run)
+    check_and_create_directory(spec_dir / "sections", result, dry_run)
+    check_and_create_directory(spec_dir / "build", result, dry_run)
     
     # refs.bib
     refs_content = "% BibTeX entries here\n"
-    check_and_create_file(core_dir / "refs.bib", refs_content, result, dry_run)
+    check_and_create_file(spec_dir / "refs.bib", refs_content, result, dry_run)
     
     # main.tex
     main_tex_content = r"""\documentclass[11pt]{article}
@@ -336,7 +394,7 @@ def fix_core_paper(repo_root: Path, result: FixResult, dry_run: bool = False) ->
 \input{../../shared/notation.tex}
 \input{../../shared/identity.tex}
 
-\title{Core Theory}
+\title{Spec}
 \author{Author Name \\ Organization}
 \date{\today}
 
@@ -363,10 +421,10 @@ def fix_core_paper(repo_root: Path, result: FixResult, dry_run: bool = False) ->
 
 \end{document}
 """
-    check_and_create_file(core_dir / "main.tex", main_tex_content, result, dry_run)
+    check_and_create_file(spec_dir / "main.tex", main_tex_content, result, dry_run)
     
     # Section files
-    sections_dir = core_dir / "sections"
+    sections_dir = spec_dir / "sections"
     
     # Abstract (section_0.tex)
     abstract_content = "% Abstract\n\nWrite abstract here.\n"
@@ -424,7 +482,8 @@ def cmd_fix(args) -> int:
         fix_repository_structure(repo_root, result, dry_run)
         fix_repository_files(repo_root, result, dry_run)
         fix_shared_files(repo_root, result, dry_run)
-        fix_core_paper(repo_root, result, dry_run)
+        fix_spec_paper(repo_root, result, dry_run)
+        fix_readmes(repo_root, result, dry_run)
         
         # Print results
         print_fix_results(result, dry_run)

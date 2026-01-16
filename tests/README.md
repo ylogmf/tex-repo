@@ -26,7 +26,7 @@ Sample workflow tests and fixtures:
 ## Running Tests
 
 ### Quick Integration Test
-Run the main integration test that covers all core functionality:
+Run the main integration test that covers all primary functionality:
 
 ```bash
 cd /Users/yanlinli/tools/tex-repo

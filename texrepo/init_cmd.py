@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .common import write_text
-from .rules import STAGES, CORE_PAPER_REL
+from .rules import STAGES, SPEC_PAPER_REL, SPEC_DIR, STAGE_PIPELINE
 from .meta_cmd import (
     escape_latex_string,
     prompt_for_metadata,
@@ -110,6 +110,12 @@ def _gitignore_policy_block() -> str:
     """Return gitignore policy template wrapped with markers."""
     template = _GITIGNORE_TEMPLATE.rstrip() + "\n"
     return f"{POLICY_START}\n{template}{POLICY_END}\n"
+
+
+def _write_readme_if_missing(path: Path, content: str) -> None:
+    if path.exists():
+        return
+    write_text(path, content)
 
 
 def cmd_init(args) -> int:
@@ -238,14 +244,14 @@ def cmd_init(args) -> int:
 """,
     )
 
-    # create core paper (00_core/core)
-    core_dir = repo / CORE_PAPER_REL
-    (core_dir / "sections").mkdir(parents=True, exist_ok=True)
-    (core_dir / "build").mkdir(parents=True, exist_ok=True)
+    # create Spec paper (SPEC/spec)
+    spec_dir = repo / SPEC_PAPER_REL
+    (spec_dir / "sections").mkdir(parents=True, exist_ok=True)
+    (spec_dir / "build").mkdir(parents=True, exist_ok=True)
 
-    write_text(core_dir / "refs.bib", "% BibTeX entries here\n")
+    write_text(spec_dir / "refs.bib", "% BibTeX entries here\n")
 
-    # Generate core paper main.tex with identity integration
+    # Generate Spec paper main.tex with identity integration
     config = get_paper_config(repo)
     date_macro = r"\date{\today}" if metadata.get('date_policy', 'today') == 'today' else r"\date{}"
     bib_style = metadata.get('default_bibliography_style', 'plainnat')
@@ -262,7 +268,7 @@ def cmd_init(args) -> int:
 \input{{../../shared/notation.tex}}
 \input{{../../shared/identity.tex}}
 
-\title{{\RepoProjectName Core}}
+\title{{\RepoProjectName Spec}}
 \author{{\RepoAuthorName \\ \RepoAuthorAffil}}
 {date_macro}
 
@@ -288,13 +294,13 @@ def cmd_init(args) -> int:
 \end{{document}}
 """
     
-    write_text(core_dir / "main.tex", main_tex_content)
+    write_text(spec_dir / "main.tex", main_tex_content)
 
     if include_abstract:
-        write_text(core_dir / "sections" / "section_0.tex", "% Abstract\n\nWrite abstract here.\n")
+        write_text(spec_dir / "sections" / "section_0.tex", "% Abstract\n\nWrite abstract here.\n")
     
     for i in range(1, section_count + 1):
-        section_path = core_dir / "sections" / f"section_{i}.tex"
+        section_path = spec_dir / "sections" / f"section_{i}.tex"
         if i == 1 and text_content is not None:
             safe_text = escape_latex_string(text_content)
             if not safe_text.endswith("\n"):
@@ -302,6 +308,24 @@ def cmd_init(args) -> int:
             write_text(section_path, f"\\section{{Section {i}}}\n\n{safe_text}")
         else:
             write_text(section_path, f"\\section{{Section {i}}}\n\nWrite here.\n")
+
+    # Seed required READMEs without overwriting existing content
+    _write_readme_if_missing(
+        repo / SPEC_DIR / "README.md",
+        "# Spec\n\nThis directory holds the Spec: primitives, constructors, forbidden constructs, and dependency direction. Everything else depends on it without modifying it.\n",
+    )
+    _write_readme_if_missing(
+        spec_dir / "README.md",
+        "# Spec Paper\n\nThe unique Spec paper for this repository. It must remain at SPEC/spec and is the immutable constraint layer.\n",
+    )
+    stage_readmes = {
+        "01_formalism": "# Formalism\n\nAdmissible forms, closures, and representations derived from the Spec.\n",
+        "02_processes": "# Processes\n\nNatural processes grounded in the Spec and expressed through the formalism.\n",
+        "03_applications": "# Applications\n\nHuman-built functions, models, and tools that depend on the Spec via the formalism and processes.\n",
+        "04_testbeds": "# Testbeds\n\nExperiments and validation environments for applications derived from the Spec.\n",
+    }
+    for stage in STAGE_PIPELINE:
+        _write_readme_if_missing(repo / stage / "README.md", stage_readmes.get(stage, ""))
 
     print(f"✅ Initialized repo: {repo}")
     return 0

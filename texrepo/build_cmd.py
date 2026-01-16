@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from .common import find_repo_root, die, normalize_rel_path
+from .rules import STAGES, SPEC_DIR, SPEC_PAPER_REL
 
 
 def needs_rebuild(paper_dir: Path) -> bool:
@@ -62,13 +63,7 @@ def discover_papers(repo_root: Path) -> list[Path]:
 
 def sort_papers_by_stage_and_domain(papers: list[Path]) -> list[Path]:
     """Sort papers by stage order, then domain number, then lexicographic order."""
-    stage_order = {
-        "00_core": 0,
-        "01_derivations": 1,
-        "02_interpretations": 2,
-        "03_applications": 3,
-        "04_testbeds": 4,
-    }
+    stage_order = {stage: idx for idx, stage in enumerate(STAGES)}
     
     def sort_key(paper: Path):
         parts = paper.parts
@@ -167,11 +162,11 @@ def cmd_build(args) -> int:
             # Current directory is a paper directory - build it
             paper_dir = current_dir
         elif is_repo_root(current_dir):
-            # Current directory is repo root - default to 00_core/core
-            core_path = repo / "00_core" / "core"
-            if not is_paper_dir(core_path):
-                die(f"Default core paper not found: {core_path}")
-            paper_dir = core_path
+            # Current directory is repo root - default to SPEC/spec
+            spec_path = repo / SPEC_PAPER_REL
+            if not is_paper_dir(spec_path):
+                die(f"Default Spec paper not found: {spec_path}")
+            paper_dir = spec_path
         else:
             die(f"Not a paper directory (missing main.tex): {current_dir}")
     else:

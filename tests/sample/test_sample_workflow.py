@@ -11,7 +11,7 @@ from pathlib import Path
 
 # Add tex-repo to path
 test_dir = Path(__file__).parent
-repo_root = test_dir.parent
+repo_root = test_dir.parent.parent
 sys.path.insert(0, str(repo_root))
 
 from texrepo.cli import main
@@ -99,36 +99,45 @@ date_format = submission
     
     print("✅ Custom configuration created")
     
+    # Create domains
+    domain_specs = [
+        ('01_formalism', 'forms'),
+        ('02_processes', 'process-models'),
+        ('03_applications', 'vision'),
+    ]
+    for stage, name in domain_specs:
+        main(['nd', stage, name])
+
     # Create papers in different domains
     papers = [
         {
-            'domain': '00_core',
-            'name': 'foundation-theory',
-            'title': 'Theoretical Foundations of Neural Representation Learning',
+            'domain': '01_formalism/00_forms',
+            'name': 'spec-derived-forms',
+            'title': 'Admissible Forms from the Spec',
             'content': {
-                'abstract': 'This paper establishes the mathematical foundations for understanding neural representation learning in deep networks.',
-                'intro': 'Neural networks have revolutionized machine learning, but their theoretical underpinnings remain partially understood.',
-                'related': 'Recent work by Bengio et al. and LeCun has provided insights into representation learning.',
-                'methods': 'We employ information-theoretic analysis and topological methods to analyze neural representations.',
-                'results': 'Our analysis reveals fundamental limits on representation capacity and generalization bounds.',
-                'conclusion': 'These theoretical insights provide guidance for designing more effective neural architectures.'
+                'abstract': 'Formal structures derived directly from the Spec.',
+                'intro': 'The Spec constrains all admissible forms.',
+                'related': 'Related work grounds representational choices in immutable constraints.',
+                'methods': 'We enumerate constructors and closures permitted by the Spec.',
+                'results': 'All derived forms remain compliant with Spec restrictions.',
+                'conclusion': 'These forms anchor downstream work.'
             }
         },
         {
-            'domain': '01_derivations',
-            'name': 'optimization-analysis',
-            'title': 'Convergence Analysis of Adaptive Optimization Methods',
+            'domain': '02_processes/00_process-models',
+            'name': 'process-analysis',
+            'title': 'Processes Anchored in the Spec',
             'content': {
-                'abstract': 'We provide convergence guarantees for Adam and other adaptive optimization algorithms.',
-                'intro': 'Adaptive optimization methods have become standard in deep learning applications.',
-                'related': 'Previous work has focused on convex settings, but non-convex analysis remains challenging.',
-                'methods': 'We use stochastic approximation theory and martingale analysis for our proofs.',
-                'results': 'We establish convergence rates for Adam under realistic assumptions.',
-                'conclusion': 'Our results provide theoretical justification for the practical success of adaptive methods.'
+                'abstract': 'Process descriptions tied to the formalism.',
+                'intro': 'Processes inherit admissible forms from the Spec.',
+                'related': 'Process modeling literature often omits upstream constraints.',
+                'methods': 'We map processes onto Spec-compliant representations.',
+                'results': 'Each process preserves Spec-defined invariants.',
+                'conclusion': 'These processes are ready for application design.'
             }
         },
         {
-            'domain': '03_applications',
+            'domain': '03_applications/00_vision',
             'name': 'vision-transformers',
             'title': 'Efficient Vision Transformers for Real-Time Object Detection',
             'content': {
@@ -202,7 +211,7 @@ date_format = submission
     # Test building one paper
     print("\n🔨 Testing build system...")
     try:
-        result = main(['build', '00_core/foundation-theory'])
+        result = main(['b', '01_formalism/00_forms/spec-derived-forms'])
         if result == 0:
             print("✅ Build completed successfully")
         else:
@@ -212,7 +221,7 @@ date_format = submission
     
     print("\n🎯 Testing forced rebuild...")
     try:
-        result = main(['build', '--force', '03_applications/vision-transformers'])
+        result = main(['b', '--force', '03_applications/00_vision/vision-transformers'])
         print("✅ Forced build completed")
     except Exception as e:
         print(f"⚠️  Forced build failed (expected if LaTeX not installed): {e}")

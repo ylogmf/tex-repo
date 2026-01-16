@@ -20,16 +20,17 @@ def run_texrepo(args, cwd, input_text=DEFAULT_INPUT):
 
 def create_minimal_repo(repo_path: Path):
     """Create a minimal valid tex-repo structure."""
-    # Create core stage and paper
-    core_stage = repo_path / "00_core"
-    core_stage.mkdir()
-    core_paper = core_stage / "core"
-    core_paper.mkdir()
-    (core_paper / "main.tex").write_text("% Core paper main file\n")
+    spec_root = repo_path / "SPEC" / "spec"
+    spec_root.mkdir(parents=True)
+    (spec_root / "main.tex").write_text("% Spec paper main file\n")
+    (spec_root.parent / "README.md").write_text("Spec README\n")
+    (spec_root / "README.md").write_text("Spec paper README\n")
     
-    # Create other required stages
-    for stage in ["01_derivations", "02_interpretations", "03_applications", "04_testbeds"]:
-        (repo_path / stage).mkdir()
+    # Create required stages with READMEs
+    for stage in ["01_formalism", "02_processes", "03_applications", "04_testbeds"]:
+        stage_dir = repo_path / stage
+        stage_dir.mkdir()
+        (stage_dir / "README.md").write_text("Stage README\n")
     
     # Create basic metadata
     (repo_path / ".paperrepo").write_text("tex-repo\n")
@@ -52,8 +53,8 @@ class StatusReportingTests(unittest.TestCase):
             # Create minimal repo
             create_minimal_repo(repo_path)
             
-            # Add .DS_Store to 00_core
-            ds_store_path = repo_path / "00_core" / ".DS_Store"
+            # Add .DS_Store to SPEC
+            ds_store_path = repo_path / "SPEC" / ".DS_Store"
             ds_store_path.write_bytes(b'\x00\x05\x16\x07\x00\x02')  # Some binary content like real .DS_Store
             
             # Run status command
@@ -68,7 +69,7 @@ class StatusReportingTests(unittest.TestCase):
             
             # Should report .DS_Store as ignored, not as violation
             self.assertIn("ignored", result.stdout.lower())
-            self.assertNotIn("Unexpected item in 00_core: .DS_Store", result.stdout)
+            self.assertNotIn("Unexpected item in SPEC/: .DS_Store", result.stdout)
             self.assertIn("✅ Repository structure is fully compliant!", result.stdout)
             
             # Should show ignored count > 0
@@ -94,7 +95,7 @@ class StatusReportingTests(unittest.TestCase):
             create_minimal_repo(repo_path)
             
             # Add an unexpected file that should NOT be ignored
-            unexpected_file = repo_path / "00_core" / "unexpected_file.txt"
+            unexpected_file = repo_path / "SPEC" / "unexpected_file.txt"
             unexpected_file.write_text("This should be a violation")
             
             # Run status command
@@ -108,19 +109,18 @@ class StatusReportingTests(unittest.TestCase):
             )
             
             # Should report the unexpected file as a violation
-            self.assertIn("Unexpected item in 00_core: unexpected_file.txt", result.stdout)
+            self.assertIn("Unexpected item in SPEC/: unexpected_file.txt", result.stdout)
             self.assertIn("❌ Repository structure has violations!", result.stdout)
             
-            # Should show violations count > 0
+            # Should show errors count > 0
             lines = result.stdout.split('\n')
             summary_section = False
             for line in lines:
                 if "Status summary:" in line:
                     summary_section = True
-                elif summary_section and "violations:" in line:
-                    # Extract number after "violations:"
-                    violations_count = int(line.split("violations:")[1].strip())
-                    self.assertGreater(violations_count, 0, "Violations count should be > 0")
+                elif summary_section and "errors:" in line:
+                    errors_count = int(line.split("errors:")[1].strip())
+                    self.assertGreater(errors_count, 0, "Errors count should be > 0")
                     break
     
     def test_multiple_macos_files_all_ignored(self):
@@ -133,10 +133,10 @@ class StatusReportingTests(unittest.TestCase):
             # Create minimal repo
             create_minimal_repo(repo_path)
             
-            # Add various macOS noise files to 00_core
+            # Add various macOS noise files to SPEC
             macos_files = [".DS_Store", "._metadata", ".AppleDouble", "Thumbs.db", "Desktop.ini"]
             for filename in macos_files:
-                noise_file = repo_path / "00_core" / filename
+                noise_file = repo_path / "SPEC" / filename
                 noise_file.write_bytes(b'noise')
             
             # Run status command
@@ -176,15 +176,18 @@ class StatusReportingTests(unittest.TestCase):
             create_minimal_repo(repo_path)
             
             # Add ignored file (.DS_Store)
-            (repo_path / "00_core" / ".DS_Store").write_bytes(b'ignored')
+            (repo_path / "SPEC" / ".DS_Store").write_bytes(b'ignored')
             
             # Add violation (unexpected file)
-            (repo_path / "00_core" / "violation.txt").write_text("violation")
+            (repo_path / "SPEC" / "violation.txt").write_text("violation")
             
-            # Add warning by creating non-contiguous domains
-            derivations = repo_path / "01_derivations"
-            (derivations / "00_first").mkdir()
-            (derivations / "02_third").mkdir()  # Missing 01_second - should be warning
+            # Remove a stage README to trigger an error
+            stage_readme = repo_path / "02_processes" / "README.md"
+            stage_readme.unlink()
+
+            # Add a domain without README
+            domain_path = repo_path / "03_applications" / "00_first"
+            domain_path.mkdir()
             
             # Run status command
             result = run_texrepo(["status"], cwd=repo_path)
@@ -211,13 +214,12 @@ class StatusReportingTests(unittest.TestCase):
                         ignored = int(line.split("ignored:")[1].strip())
             
             # Verify counts make sense
-            self.assertGreater(violations, 0, "Should have violations")
+            self.assertGreater(errors, 0, "Should have errors")
             self.assertGreater(ignored, 0, "Should have ignored items") 
             self.assertGreaterEqual(warnings, 0, "Warnings count should be valid")
-            self.assertGreaterEqual(errors, 0, "Errors count should be valid")
             
             # Count actual occurrences in output to verify consistency
-            violation_messages = result.stdout.count("Unexpected item in 00_core:")
+            violation_messages = result.stdout.count("Unexpected item in SPEC/")
             self.assertGreater(violation_messages, 0, "Should have violation messages")
 
 

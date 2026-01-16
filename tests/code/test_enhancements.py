@@ -10,13 +10,13 @@ import shutil
 import subprocess
 from pathlib import Path
 
-def run_texrepo_command(args):
+def run_texrepo_command(args, input_text=None):
     """Run tex-repo command via the main script"""
-    repo_root = Path(__file__).parent.parent
+    repo_root = Path(__file__).resolve().parents[2]
     script_path = repo_root / 'tex-repo'
     
-    cmd = ['python3', str(script_path)] + args
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    cmd = [str(script_path)] + args
+    result = subprocess.run(cmd, input=input_text, capture_output=True, text=True)
     
     if result.returncode != 0:
         print(f"Command failed: {' '.join(cmd)}")
@@ -25,34 +25,12 @@ def run_texrepo_command(args):
         raise SystemExit(result.returncode)
     
     return result.returncode
+from texrepo.cli import main
 from texrepo.config import get_paper_config, create_default_config
 from texrepo.build_cmd import needs_rebuild
 from texrepo.meta_cmd import parse_paperrepo_metadata
+from texrepo.common import TexRepoError
 import time
-
-
-class MockInput:
-    """Mock input for automated testing"""
-    def __init__(self, responses):
-        self.responses = iter(responses)
-        self.original_input = input
-    
-    def __enter__(self):
-        import builtins
-        builtins.input = self.mock_input
-        return self
-    
-    def __exit__(self, *args):
-        import builtins
-        builtins.input = self.original_input
-    
-    def mock_input(self, prompt):
-        try:
-            response = next(self.responses)
-            print(f"{prompt}{response}")
-            return response
-        except StopIteration:
-            return ""
 
 
 def test_enhanced_init():
@@ -75,8 +53,8 @@ def test_enhanced_init():
             "unsrtnat"               # bibliography_style
         ]
         
-        with MockInput(responses):
-            exit_code = run_texrepo_command(['init', 'test-repo'])
+        input_text = "\n".join(responses) + "\n"
+        exit_code = run_texrepo_command(['init', 'test-repo'], input_text=input_text)
         
         assert exit_code == 0, "Init should succeed"
         
@@ -106,8 +84,7 @@ def test_configuration_system():
         os.chdir(temp_dir)
         
         # Create a test repo
-        with MockInput([""]*10):  # Use all defaults
-            main(['init', 'config-test'])
+        run_texrepo_command(['init', 'config-test'], input_text="\n"*10)
         
         os.chdir('config-test')
         
@@ -131,14 +108,14 @@ default_engine = pdflatex
         assert config['include_abstract'] == False, "Should disable abstract"
         
         # Create a paper and check it uses config
-        main(['np', '01_derivations', 'test-paper', 'Test Paper'])
+        main(['np', '01_formalism', 'test-paper', 'Test Paper'])
         
-        main_tex_content = Path('01_derivations/test-paper/main.tex').read_text()
+        main_tex_content = Path('01_formalism/test-paper/main.tex').read_text()
         assert 'report' in main_tex_content, "Should use report document class"
         assert '12pt' in main_tex_content, "Should use 12pt option"
         
         # Check section count (should be 5 sections)
-        sections_dir = Path('01_derivations/test-paper/sections')
+        sections_dir = Path('01_formalism/test-paper/sections')
         section_files = list(sections_dir.glob('section_*.tex'))
         # Should have section_1.tex through section_5.tex (no section_0.tex due to include_abstract=false)
         assert len(section_files) == 5, f"Should have 5 section files, got {len(section_files)}"
@@ -154,15 +131,14 @@ def test_build_caching():
         os.chdir(temp_dir)
         
         # Create a test repo
-        with MockInput([""]*10):
-            main(['init', 'cache-test'])
+        run_texrepo_command(['init', 'cache-test'], input_text="\n"*10)
         
         os.chdir('cache-test')
         
         # Create test paper
-        main(['np', '01_derivations', 'test-cache', 'Test Caching'])
+        main(['np', '01_formalism', 'test-cache', 'Test Caching'])
         
-        paper_dir = Path('01_derivations/test-cache')
+        paper_dir = Path('01_formalism/test-cache')
         
         # Initially should need rebuild (no PDF)
         assert needs_rebuild(paper_dir), "Should need rebuild when PDF doesn't exist"
@@ -199,8 +175,7 @@ def test_improved_error_messages():
         os.chdir(temp_dir)
         
         # Create a test repo
-        with MockInput([""]*10):
-            main(['init', 'error-test'])
+        run_texrepo_command(['init', 'error-test'], input_text="\n"*10)
         
         os.chdir('error-test')
         
@@ -208,17 +183,17 @@ def test_improved_error_messages():
         try:
             main(['np', 'nonexistent-domain', 'test-paper'])
             assert False, "Should have failed with error"
-        except SystemExit:
+        except (SystemExit, TexRepoError):
             # Expected - the die() function calls sys.exit()
             pass
         
         # Test error when paper already exists
-        main(['np', '01_derivations', 'duplicate-test'])
+        main(['np', '01_formalism', 'duplicate-test'])
         
         try:
-            main(['np', '01_derivations', 'duplicate-test'])
+            main(['np', '01_formalism', 'duplicate-test'])
             assert False, "Should have failed with duplicate paper error"
-        except SystemExit:
+        except (SystemExit, TexRepoError):
             # Expected
             pass
         
@@ -233,8 +208,7 @@ def test_config_command():
         os.chdir(temp_dir)
         
         # Create a test repo
-        with MockInput([""]*10):
-            main(['init', 'config-cmd-test'])
+        run_texrepo_command(['init', 'config-cmd-test'], input_text="\n"*10)
         
         os.chdir('config-cmd-test')
         

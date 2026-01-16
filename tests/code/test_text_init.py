@@ -36,11 +36,11 @@ class TextInitTests(unittest.TestCase):
             tmp_path = Path(temp_dir)
             repo_path = init_repo_from_text(tmp_path)
 
-            self.assertTrue((repo_path / "00_core" / "core" / "main.tex").exists())
+            self.assertTrue((repo_path / "SPEC" / "spec" / "main.tex").exists())
 
             # Ensure the imported text is present in section_1 with LaTeX-safe escaping
             section_path = (
-                repo_path / "00_core" / "core" / "sections" / "section_1.tex"
+                repo_path / "SPEC" / "spec" / "sections" / "section_1.tex"
             )
             actual_section = section_path.read_text()
             expected_section = (SAMPLE_DIR / "expected_section_1.tex").read_text()

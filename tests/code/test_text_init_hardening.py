@@ -99,7 +99,7 @@ class TextInitHardeningTests(unittest.TestCase):
                 "Failure must not create .paperrepo in existing directory",
             )
             self.assertFalse(
-                (target / "00_core").exists(),
+                (target / "SPEC").exists(),
                 "Failure must not create stage directories in existing directory",
             )
 
@@ -136,7 +136,7 @@ class TextInitHardeningTests(unittest.TestCase):
                 f"Init from escape seed should succeed. stdout={result.stdout} stderr={result.stderr}",
             )
 
-            section_path = repo_path / "00_core" / "core" / "sections" / "section_1.tex"
+            section_path = repo_path / "SPEC" / "spec" / "sections" / "section_1.tex"
             actual_section = section_path.read_text()
 
             self.assertEqual(

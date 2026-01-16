@@ -104,6 +104,12 @@ def write_paper_skeleton(repo: Path, paper_dir: Path, title: str) -> None:
     for i in range(1, section_count + 1):
         write_text(paper_dir / "sections" / f"section_{i}.tex", f"\\section{{Section {i}}}\n\nWrite here.\n")
 
+    if not (paper_dir / "README.md").exists():
+        write_text(
+            paper_dir / "README.md",
+            "# Paper\n\nThis paper depends on the Spec through its enclosing domain and stage.\n",
+        )
+
 
 def cmd_np(args) -> int:
     repo = find_repo_root()

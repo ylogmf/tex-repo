@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .common import find_repo_root, next_prefix, die, normalize_rel_path
+from .common import find_repo_root, next_prefix, die, normalize_rel_path, write_text
 from .rules import assert_stage_parent_allowed
 
 
@@ -21,5 +21,11 @@ def cmd_nd(args) -> int:
         die(f"Domain already exists: {target}")
 
     target.mkdir(parents=True)
+    readme_path = target / "README.md"
+    if not readme_path.exists():
+        write_text(
+            readme_path,
+            f"# {target.name}\n\nDomain under {parent_rel.parts[0]} derived from the Spec.\n",
+        )
     print(f"✅ New domain: {parent_rel}/{prefix}_{args.domain_name}")
     return 0
