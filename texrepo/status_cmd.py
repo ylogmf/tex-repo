@@ -5,7 +5,18 @@ from typing import NamedTuple, List, Set
 import fnmatch
 
 from .common import find_repo_root, TexRepoError
-from .rules import SPEC_DIR, SPEC_PAPER_REL, STAGE_PIPELINE
+from .rules import (
+    WORLD_DIR,
+    FOUNDATION_REL,
+    SPEC_REL,
+    FORMALISM_DIR,
+    PROCESS_REGIME_DIR,
+    FUNCTION_APPLICATION_DIR,
+    PAPERS_DIRNAME,
+    PROCESS_BRANCHES,
+    FUNCTION_BRANCHES,
+    entry_tex_candidates,
+)
 from .meta_cmd import parse_paperrepo_metadata
 from .errors import ErrorCode, format_error
 
@@ -143,6 +154,30 @@ def is_ignored_by_patterns(path: Path, repo_root: Path, patterns: Set[str]) -> b
     return False
 
 
+def _find_entry_tex(paper_dir: Path) -> Path | None:
+    """Return the entry tex file if present (folder-named preferred)."""
+    for candidate in entry_tex_candidates(paper_dir):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _check_paper(paper_dir: Path, repo_root: Path, messages: List[str]) -> bool:
+    """Validate a paper directory structure."""
+    is_ok = True
+    rel_path = paper_dir.relative_to(repo_root)
+    entry = _find_entry_tex(paper_dir)
+    if not entry:
+        messages.append(f"  {format_error(ErrorCode.MAIN_TEX_MISSING, 'Entry .tex file missing', str(rel_path))}")
+        return False
+    if entry.name == "main.tex":
+        messages.append(f"  ⚠️  Legacy entry file main.tex detected (expected {paper_dir.name}.tex): {rel_path}")
+    if not (paper_dir / "README.md").exists():
+        messages.append(f"  {format_error(ErrorCode.README_MISSING, 'README.md missing', str(rel_path))}")
+        is_ok = False
+    return is_ok
+
+
 def cmd_status(args) -> int:
     """Inspect repository structure and report compliance."""
     try:
@@ -173,8 +208,10 @@ def check_repo_status(repo_root: Path) -> StatusResult:
 
     checks = [
         check_top_level_structure(repo_root, ignore_patterns),
-        check_spec_area(repo_root, ignore_patterns),
-        check_stages_domains_and_papers(repo_root, ignore_patterns),
+        check_world_area(repo_root, ignore_patterns),
+        check_formalism_area(repo_root, ignore_patterns),
+        check_process_regime_area(repo_root, ignore_patterns),
+        check_function_application_area(repo_root, ignore_patterns),
         check_metadata_warnings(repo_root),
     ]
 
@@ -208,7 +245,7 @@ def check_top_level_structure(repo_root: Path, ignore_patterns: Set[str]) -> Sta
     is_compliant = True
     ignored_count = 0
 
-    required = [SPEC_DIR, *STAGE_PIPELINE]
+    required = [WORLD_DIR, FORMALISM_DIR, PROCESS_REGIME_DIR, FUNCTION_APPLICATION_DIR]
     for name in required:
         path = repo_root / name
         if path.is_dir():
@@ -217,7 +254,16 @@ def check_top_level_structure(repo_root: Path, ignore_patterns: Set[str]) -> Sta
             messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'{name} (missing)')}")
             is_compliant = False
 
-    allowed_extras = {"shared", "scripts", "98_context", "99_legacy", "releases"}
+    allowed_extras = {
+        "shared",
+        "scripts",
+        "98_context",
+        "99_legacy",
+        "releases",
+        "04_testbed",
+        "04_testbeds",
+        "SPEC",
+    }
     for item in repo_root.iterdir():
         if item.name.startswith("."):
             continue
@@ -240,98 +286,220 @@ def check_top_level_structure(repo_root: Path, ignore_patterns: Set[str]) -> Sta
     return StatusResult(is_compliant, messages)
 
 
-def check_spec_area(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
-    """Validate SPEC directory, uniqueness, and README requirements."""
-    messages = ["🔍 Checking Spec..."]
+def check_world_area(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
+    """Validate 00_world with foundation and spec."""
+    messages = ["🔍 Checking world layer..."]
     is_compliant = True
     ignored_count = 0
 
-    spec_root = repo_root / SPEC_DIR
-    if not spec_root.exists():
-        messages.append(f"  {format_error(ErrorCode.SPEC_MISSING, 'SPEC directory missing')}")
+    world_root = repo_root / WORLD_DIR
+    if not world_root.exists():
+        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, '00_world directory missing')}")
         messages.append("")
         return StatusResult(False, messages)
 
-    spec_readme = spec_root / "README.md"
-    if not spec_readme.exists():
-        messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md', 'SPEC/')}")
+    world_readme = world_root / "README.md"
+    if not world_readme.exists():
+        messages.append(f"  {format_error(ErrorCode.README_MISSING, 'README.md missing', WORLD_DIR)}")
         is_compliant = False
 
-    spec_paper_dir = repo_root / SPEC_PAPER_REL
-    if spec_paper_dir.exists():
-        if not (spec_paper_dir / "README.md").exists():
-            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md', 'SPEC/spec')}")
+    foundation_dir = repo_root / FOUNDATION_REL
+    if foundation_dir.exists():
+        if not (foundation_dir / "README.md").exists():
+            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'README.md missing', str(FOUNDATION_REL))}")
             is_compliant = False
-        if not (spec_paper_dir / "main.tex").exists():
-            messages.append(f"  {format_error(ErrorCode.MAIN_TEX_MISSING, 'main.tex missing', 'SPEC/spec')}")
+        entry = _find_entry_tex(foundation_dir)
+        if not entry:
+            messages.append(f"  {format_error(ErrorCode.MAIN_TEX_MISSING, 'Entry .tex file missing', str(FOUNDATION_REL))}")
+            is_compliant = False
+        elif entry.name == "main.tex":
+            messages.append(f"  ⚠️  Legacy entry file main.tex detected (expected {foundation_dir.name}.tex): {FOUNDATION_REL}")
+        for section_name in ["00_definitions.tex", "01_axioms.tex"]:
+            if not (foundation_dir / "sections" / section_name).exists():
+                messages.append(
+                    f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'Missing {section_name}', str(FOUNDATION_REL))}"
+                )
+                is_compliant = False
+    else:
+        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'Foundation directory missing', str(FOUNDATION_REL))}")
+        is_compliant = False
+
+    spec_dir = repo_root / SPEC_REL
+    if spec_dir.exists():
+        if not (spec_dir / "README.md").exists():
+            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'README.md missing', str(SPEC_REL))}")
+            is_compliant = False
+        entry = _find_entry_tex(spec_dir)
+        if not entry:
+            messages.append(f"  {format_error(ErrorCode.MAIN_TEX_MISSING, 'Entry .tex file missing', str(SPEC_REL))}")
+            is_compliant = False
+        elif entry.name == "main.tex":
+            messages.append(f"  ⚠️  Legacy entry file main.tex detected (expected {spec_dir.name}.tex): {SPEC_REL}")
+        if not (spec_dir / "refs.bib").exists():
+            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'refs.bib missing', str(SPEC_REL))}")
             is_compliant = False
     else:
-        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'Spec paper directory missing', 'SPEC/spec')}")
+        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'World spec directory missing', str(SPEC_REL))}")
         is_compliant = False
 
-    for item in spec_root.iterdir():
+    for item in world_root.iterdir():
         if item.name.startswith("."):
             continue
-        if item.name in {"README.md", "spec"}:
+        if item.name in {FOUNDATION_REL.name, SPEC_REL.name, "README.md"}:
             continue
         if is_ignored_by_patterns(item, repo_root, ignore_patterns):
             ignored_count += 1
             continue
-        messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected item in SPEC/', item.name)}")
+        messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected item in 00_world/', item.name)}")
         is_compliant = False
 
     if ignored_count > 0:
-        messages.append(f"  ℹ️ ignored {ignored_count} items in SPEC/")
+        messages.append(f"  ℹ️ ignored {ignored_count} items in 00_world/")
 
     messages.append("")
     return StatusResult(is_compliant, messages)
 
 
-def check_stages_domains_and_papers(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
-    """Validate stage, domain, and paper placement plus README requirements."""
-    messages = ["🔍 Checking stages, domains, and papers..."]
+def _check_stage_readme(stage_path: Path, stage_label: str, messages: List[str]) -> bool:
+    readme = stage_path / "README.md"
+    if not readme.exists():
+        messages.append(f"  {format_error(ErrorCode.README_MISSING, 'README.md missing', stage_label)}")
+        return False
+    return True
+
+
+def check_formalism_area(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
+    messages = ["🔍 Checking formalism..."]
     is_compliant = True
+    stage_path = repo_root / FORMALISM_DIR
 
-    for stage in STAGE_PIPELINE:
-        stage_path = repo_root / stage
-        if not stage_path.exists():
+    if not stage_path.exists():
+        messages.append("")
+        return StatusResult(is_compliant, messages)
+
+    if not _check_stage_readme(stage_path, FORMALISM_DIR, messages):
+        is_compliant = False
+
+    papers_root = stage_path / PAPERS_DIRNAME
+    if not papers_root.exists():
+        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'papers/ missing', f'{FORMALISM_DIR}/')}")
+        is_compliant = False
+    else:
+        for paper_dir in papers_root.iterdir():
+            if not paper_dir.is_dir() or is_ignored_by_patterns(paper_dir, repo_root, ignore_patterns):
+                continue
+            if not _check_paper(paper_dir, repo_root, messages):
+                is_compliant = False
+
+    for item in stage_path.iterdir():
+        if item.name.startswith(".") or item.name == PAPERS_DIRNAME or item.name == "README.md":
             continue
-
-        stage_readme = stage_path / "README.md"
-        if not stage_readme.exists():
-            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md', stage)}")
+        if is_ignored_by_patterns(item, repo_root, ignore_patterns):
+            continue
+        if item.is_dir() and _find_entry_tex(item):
+            rel_path = item.relative_to(repo_root)
+            messages.append(f"  {format_error(ErrorCode.INVALID_PLACEMENT, 'Paper outside papers/ directory', str(rel_path))}")
             is_compliant = False
 
-        for item in stage_path.iterdir():
-            if item.name.startswith("."):
-                continue
-            if is_ignored_by_patterns(item, repo_root, ignore_patterns):
-                continue
+    messages.append("")
+    return StatusResult(is_compliant, messages)
 
-            if item.is_dir():
-                # Papers are not allowed directly under stages
-                if (item / "main.tex").exists():
-                    messages.append(f"  {format_error(ErrorCode.INVALID_PLACEMENT, 'Paper directly under stage', f'{stage}/{item.name}')}")
-                    is_compliant = False
-                    continue
 
-                # Domain folder
-                domain_readme = item / "README.md"
-                if not domain_readme.exists():
-                    messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md in domain', f'{stage}/{item.name}')}")
-                    is_compliant = False
+def _check_branch_papers(repo_root: Path, branch_root: Path, branch_label: str, messages: List[str],
+                         ignore_patterns: Set[str]) -> bool:
+    ok = True
+    papers_root = branch_root / PAPERS_DIRNAME
+    if not papers_root.exists():
+        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'papers/ missing', f'{branch_label}/')}")
+        return False
 
-                for paper_dir in item.iterdir():
-                    if not paper_dir.is_dir():
-                        continue
-                    if is_ignored_by_patterns(paper_dir, repo_root, ignore_patterns):
-                        continue
-                    if (paper_dir / "main.tex").exists():
-                        if not (paper_dir / "README.md").exists():
-                            rel_path = paper_dir.relative_to(repo_root)
-                            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'Missing README.md in paper', str(rel_path))}")
-                            is_compliant = False
-                    # Non-paper subdirectories are allowed silently
+    for item in branch_root.iterdir():
+        if item.name.startswith(".") or item.name in {PAPERS_DIRNAME, "README.md"}:
+            continue
+        if is_ignored_by_patterns(item, repo_root, ignore_patterns):
+            continue
+        if item.is_dir() and _find_entry_tex(item):
+            rel_path = item.relative_to(repo_root)
+            messages.append(f"  {format_error(ErrorCode.INVALID_PLACEMENT, 'Paper outside papers/', str(rel_path))}")
+            ok = False
+
+    for paper_dir in papers_root.iterdir():
+        if not paper_dir.is_dir() or is_ignored_by_patterns(paper_dir, repo_root, ignore_patterns):
+            continue
+        if not _check_paper(paper_dir, repo_root, messages):
+            ok = False
+    return ok
+
+
+def check_process_regime_area(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
+    messages = ["🔍 Checking process/regime..."]
+    is_compliant = True
+    stage_path = repo_root / PROCESS_REGIME_DIR
+
+    if not stage_path.exists():
+        messages.append("")
+        return StatusResult(is_compliant, messages)
+
+    if not _check_stage_readme(stage_path, PROCESS_REGIME_DIR, messages):
+        is_compliant = False
+
+    for branch in PROCESS_BRANCHES:
+        branch_root = stage_path / branch
+        if not branch_root.exists():
+            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'{branch} missing', PROCESS_REGIME_DIR)}")
+            is_compliant = False
+            continue
+        if not _check_stage_readme(branch_root, f"{PROCESS_REGIME_DIR}/{branch}", messages):
+            is_compliant = False
+        if not _check_branch_papers(repo_root, branch_root, f"{PROCESS_REGIME_DIR}/{branch}", messages, ignore_patterns):
+            is_compliant = False
+
+    for item in stage_path.iterdir():
+        if item.name.startswith(".") or item.name in PROCESS_BRANCHES or item.name == "README.md":
+            continue
+        if is_ignored_by_patterns(item, repo_root, ignore_patterns):
+            continue
+        if item.is_dir() and _find_entry_tex(item):
+            rel_path = item.relative_to(repo_root)
+            messages.append(f"  {format_error(ErrorCode.INVALID_PLACEMENT, 'Paper outside process/regime branches', str(rel_path))}")
+            is_compliant = False
+
+    messages.append("")
+    return StatusResult(is_compliant, messages)
+
+
+def check_function_application_area(repo_root: Path, ignore_patterns: Set[str]) -> StatusResult:
+    messages = ["🔍 Checking function/application..."]
+    is_compliant = True
+    stage_path = repo_root / FUNCTION_APPLICATION_DIR
+
+    if not stage_path.exists():
+        messages.append("")
+        return StatusResult(is_compliant, messages)
+
+    if not _check_stage_readme(stage_path, FUNCTION_APPLICATION_DIR, messages):
+        is_compliant = False
+
+    for branch in FUNCTION_BRANCHES:
+        branch_root = stage_path / branch
+        if not branch_root.exists():
+            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'{branch} missing', FUNCTION_APPLICATION_DIR)}")
+            is_compliant = False
+            continue
+        if not _check_stage_readme(branch_root, f"{FUNCTION_APPLICATION_DIR}/{branch}", messages):
+            is_compliant = False
+        if not _check_branch_papers(repo_root, branch_root, f"{FUNCTION_APPLICATION_DIR}/{branch}", messages, ignore_patterns):
+            is_compliant = False
+
+    for item in stage_path.iterdir():
+        if item.name.startswith(".") or item.name in FUNCTION_BRANCHES or item.name == "README.md":
+            continue
+        if is_ignored_by_patterns(item, repo_root, ignore_patterns):
+            continue
+        if item.is_dir() and _find_entry_tex(item):
+            rel_path = item.relative_to(repo_root)
+            messages.append(f"  {format_error(ErrorCode.INVALID_PLACEMENT, 'Paper outside function/application branches', str(rel_path))}")
+            is_compliant = False
 
     messages.append("")
     return StatusResult(is_compliant, messages)

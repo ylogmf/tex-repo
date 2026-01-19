@@ -1,0 +1,4 @@
+! LaTeX Error: File `cleveref.sty' not found.
+l.42 \usepackage{nameinlink,noabbrev}{cleveref}
+
+!  ==> Fatal error occurred, no output PDF file produced!

@@ -82,17 +82,24 @@ def test_cli_smoke():
         
         # Verify required structure was created
         required_readmes = [
-            "SPEC/README.md",
-            "SPEC/spec/README.md", 
+            "00_world/README.md",
+            "00_world/00_foundation/README.md",
+            "00_world/01_spec/README.md", 
             "01_formalism/README.md",
-            "02_processes/README.md",
-            "03_applications/README.md",
-            "04_testbeds/README.md",
+            "02_process_regime/README.md",
+            "02_process_regime/process/README.md",
+            "02_process_regime/regime/README.md",
+            "03_function_application/README.md",
+            "03_function_application/function/README.md",
+            "03_function_application/application/README.md",
         ]
         
         for readme_path in required_readmes:
             full_path = repo_path / readme_path
             assert full_path.exists(), f"Missing {readme_path}"
+        
+        assert (repo_path / "00_world/00_foundation/00_foundation.tex").exists(), "Foundation entry should exist"
+        assert (repo_path / "00_world/01_spec/01_spec.tex").exists(), "Spec entry should exist"
         
         print("✅ Repository initialization works")
         
@@ -101,19 +108,19 @@ def test_cli_smoke():
         result = run_texrepo_cmd(["nd", "01_formalism", "test_domain"], cwd=repo_path)
         assert result.returncode == 0, f"Domain creation failed: {result.stderr}"
         
-        domain_readme = repo_path / "01_formalism" / "00_test_domain" / "README.md"
+        domain_readme = repo_path / "01_formalism" / "papers" / "00_test_domain" / "README.md"
         assert domain_readme.exists(), "Domain README should exist"
         print("✅ Domain creation works")
         
         # Test 3: Paper creation  
         print("📄 Testing paper creation...")
         result = run_texrepo_cmd([
-            "np", "01_formalism/00_test_domain", "test_paper", "Test Paper"
+            "np", "01_formalism/papers/00_test_domain", "Test Paper"
         ], cwd=repo_path)
         assert result.returncode == 0, f"Paper creation failed: {result.stderr}"
         
-        paper_dir = repo_path / "01_formalism" / "00_test_domain" / "test_paper"
-        required_files = ["README.md", "main.tex", "refs.bib"]
+        paper_dir = repo_path / "01_formalism" / "papers" / "00_test_domain"
+        required_files = ["README.md", "00_test_domain.tex", "refs.bib"]
         required_dirs = ["sections", "build"]
         
         for file_name in required_files:
@@ -122,13 +129,15 @@ def test_cli_smoke():
         for dir_name in required_dirs:
             assert (paper_dir / dir_name).exists(), f"Missing {dir_name}/"
         
+        assert not (paper_dir / "main.tex").exists(), "Legacy main.tex should not be created"
+        
         print("✅ Paper creation works")
         
         # Test 4: Invalid paper placement detection
         print("⚠️  Testing invalid paper placement detection...")
         bad_paper = repo_path / "01_formalism" / "bad_paper"
-        bad_paper.mkdir()
-        (bad_paper / "main.tex").write_text("\\documentclass{article}\\begin{document}Test\\end{document}")
+        bad_paper.mkdir(parents=True, exist_ok=True)
+        (bad_paper / "bad_paper.tex").write_text("\\documentclass{article}\\begin{document}Test\\end{document}")
         
         result = run_texrepo_cmd(["status"], cwd=repo_path)
         assert result.returncode != 0, "Status should fail with invalid placement"
@@ -142,7 +151,7 @@ def test_cli_smoke():
         print("🔧 Testing missing README detection and fix...")
         
         # Remove a README and test detection
-        processes_readme = repo_path / "02_processes" / "README.md" 
+        processes_readme = repo_path / "02_process_regime" / "README.md" 
         original_content = processes_readme.read_text()
         processes_readme.unlink()
         
@@ -170,20 +179,25 @@ def test_cli_smoke():
         
         print("✅ Missing README detection and fix works")
         
-        # Test 6: SPEC uniqueness protection
-        print("🔒 Testing SPEC uniqueness protection...")
+        # Test 6: Protected areas
+        print("🔒 Testing protected areas...")
         
-        # Try to create domain under SPEC
-        result = run_texrepo_cmd(["nd", "SPEC", "invalid_domain"], cwd=repo_path)
-        assert result.returncode != 0, "Domain creation under SPEC should fail"
-        assert "E[SPEC_IMMUTABLE]" in result.stderr, "Should reject SPEC domain"
+        # Try to create domain under 00_world
+        result = run_texrepo_cmd(["nd", "00_world", "invalid_domain"], cwd=repo_path)
+        assert result.returncode != 0, "Domain creation under 00_world should fail"
+        assert "E[INVALID_PARENT]" in result.stderr, "Should reject world domain"
         
-        # Try to create paper under SPEC  
-        result = run_texrepo_cmd(["np", "SPEC", "invalid_paper", "Invalid"], cwd=repo_path)
-        assert result.returncode != 0, "Paper creation under SPEC should fail"
-        assert "E[SPEC_IMMUTABLE]" in result.stderr, "Should reject SPEC paper"
+        # Try to create paper under invalid world path
+        result = run_texrepo_cmd(["np", "00_world/02_invalid", "Invalid"], cwd=repo_path)
+        assert result.returncode != 0, "Paper creation under invalid world path should fail"
+        assert "E[INVALID_PARENT]" in result.stderr, "Should reject invalid world paper"
         
-        print("✅ SPEC uniqueness protection works")
+        # Try to create paper under unknown stage
+        result = run_texrepo_cmd(["np", "SPEC/thing"], cwd=repo_path)
+        assert result.returncode != 0, "Paper creation under unknown stage should fail"
+        assert "E[INVALID_PARENT]" in result.stderr, "Should reject unknown stage"
+        
+        print("✅ Protected area checks work")
         
     print("🎉 All CLI smoke tests passed!")
     return True

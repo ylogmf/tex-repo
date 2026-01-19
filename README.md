@@ -1,6 +1,6 @@
-# tex-repo: SPEC-First LaTeX Repository Manager
+# tex-repo: World-First LaTeX Repository Manager
 
-A lightweight CLI that enforces a SPEC-centered structure for research papers. The Spec is the immutable constraint layer; all other work depends on it without modifying it.
+A lightweight CLI that enforces a world-first, layered structure for research papers. The world layer (foundation + spec) is immutable; everything else depends on it without modifying it.
 
 ## Installation
 
@@ -24,16 +24,16 @@ Alternatively, you can use the module directly:
 python -m texrepo <command>
 ```
 
-## Structure and Semantics
-- **SPEC**: Defines primitives, constructors, forbidden constructs, and dependency direction. Exactly one Spec paper lives at `SPEC/spec`.
-- **FORMALISM (01_formalism)**: Admissible forms, closures, and representations grounded in the Spec.
-- **PROCESSES (02_processes)**: Natural processes expressed through the formalism.
-- **APPLICATIONS (03_applications)**: Human-built functions, models, and tools that rely on the Spec via formalism and processes.
-- **TESTBEDS (04_testbeds)**: Experiments and validation environments for applications.
-- **Context / Legacy**: `98_context/` and `99_legacy/` are allowed but not structural.
+## Structure and Semantics (world-first)
+- **World (00_world)**: Immutable `00_foundation` (definitions and axioms) plus the core `01_spec` paper.
+- **Formalism (01_formalism)**: Admissible forms grounded in the world layer. Papers live under `01_formalism/papers/`.
+- **Process Regime (02_process_regime)**: Split into `process/` and `regime/`, each with its own `papers/` directory.
+- **Function Application (03_function_application)**: Split into `function/` and `application/`, each with its own `papers/` directory.
+- **Releases**: Immutable bundles collected in `releases/`.
+- **Support**: `shared/`, `scripts/`, `98_context/`, and `99_legacy/` are allowed but not structural.
 
 ### README Policy (strict, non-destructive)
-- Required at every level: `SPEC/`, `SPEC/spec/`, each stage directory, every domain, every paper.
+- Required at every level: `00_world/`, each world paper, every stage, every branch, every paper.
 - Never overwritten; only created when missing.
 
 ### Required Layout
@@ -41,47 +41,74 @@ python -m texrepo <command>
 my-repo/
 ├── .paperrepo
 ├── .texrepo-config
-├── SPEC/
-│   ├── README.md
-│   └── spec/
+├── 00_world/
+│   ├── 00_foundation/
+│   │   ├── README.md
+│   │   ├── 00_foundation.tex
+│   │   └── sections/
+│   │       ├── 00_definitions.tex
+│   │       └── 01_axioms.tex
+│   └── 01_spec/
 │       ├── README.md
-│       ├── main.tex
+│       ├── 01_spec.tex
 │       ├── refs.bib
 │       └── sections/
 ├── 01_formalism/
-│   └── README.md
-├── 02_processes/
-│   └── README.md
-├── 03_applications/
-│   └── README.md
-├── 04_testbeds/
-│   └── README.md
-├── 98_context/
-├── 99_legacy/
-└── shared/, scripts/, releases/ ...
+│   ├── README.md
+│   └── papers/
+│       └── 00_<topic>/
+│           └── 00_<topic>.tex
+├── 02_process_regime/
+│   ├── README.md
+│   ├── process/
+│   │   └── papers/
+│   │       └── 00_<subject>/
+│   │           └── 00_<subject>.tex
+│   └── regime/
+│       └── papers/
+│           └── 00_<subject>/
+│               └── 00_<subject>.tex
+├── 03_function_application/
+│   ├── README.md
+│   ├── function/
+│   │   └── papers/
+│   │       └── 00_<subject>/
+│   │           └── 00_<subject>.tex
+│   └── application/
+│       └── papers/
+│           └── 00_<subject>/
+│               └── 00_<subject>.tex
+└── releases/
 ```
-Papers must live inside numbered domains under stages (e.g., `01_formalism/00_domain/paper/`). The only allowed paper outside a domain is `SPEC/spec`.
+Every paper's entry file matches the folder name (no `main.tex`).
 
 ## Commands
-- `tex-repo init <name|text.txt>`: Create a repository with SPEC/spec, all stages, and required READMEs (existing files are never overwritten). A `.txt` seed populates `SPEC/spec/sections/section_1.tex`.
+- `tex-repo init <name|text.txt>`: Create a repository with world foundation/spec, all stages/branches, and required READMEs (existing files are never overwritten). A `.txt` seed populates `00_world/01_spec/sections/section_1.tex`.
 - `tex-repo status`: Validate structure. Errors when:
   - Required top-level directories missing
-  - Stage README missing
-  - Domain README missing
+  - Stage or branch README missing
   - Paper README missing
-  - Paper found directly under a stage (Spec is the only exception at `SPEC/spec`)
+  - Paper found outside the allowed `papers/` locations
+  - Entry file missing (expects `<folder>.tex`, legacy `main.tex` only tolerated for older papers)
 - `tex-repo fix [--dry-run]`: Create missing directories/READMEs without overwriting existing content.
-- `tex-repo nd <stage_or_parent> <domain-name>`: Create a numbered domain under a stage and seed its README.
-- `tex-repo np <domain> <slug> [title]`: Create a paper within a domain and seed its README.
-- `tex-repo b [path|all]`: Build a paper (defaults to `SPEC/spec` when run at repo root).
+- `tex-repo nd <layer_or_parent> <name>`: Create a numbered folder under the correct `papers/` root. Examples:
+  - `tex-repo nd 01_formalism flows` -> `01_formalism/papers/00_flows`
+  - `tex-repo nd 02_process_regime/process regimes` -> `02_process_regime/process/papers/00_regimes`
+- `tex-repo np <path> [title]`: Create a paper at the requested path, auto-inserting `papers/` when omitted. Examples:
+  - `tex-repo np 00_world/00_foundation`
+  - `tex-repo np 01_formalism/00_logic "Logic Paper"`
+  - `tex-repo np 02_process_regime/process/00_flows`
+  - `tex-repo np 03_function_application/application/00_models`
+- `tex-repo b [path|all]`: Build a paper (defaults to `00_world/01_spec` when run at repo root). On failure, tex-repo summarizes the primary LaTeX error and prints concise suggestions instead of dumping full logs (use `--verbose` for more output).
 - `tex-repo release <paper>`: Create an immutable release bundle.
 - `tex-repo sync-meta`: Regenerate `shared/identity.tex` from `.paperrepo`.
 - `tex-repo config`: Create `.texrepo-config` if missing.
 
 ## Design Rules
-- Spec is unique and immutable.
-- Dependency direction: SPEC → FORMALISM → PROCESSES → APPLICATIONS → TESTBEDS.
-- Papers never sit directly under stages (only inside domains); Spec is the single exception.
+- World papers anchor everything else.
+- Dependency direction: world → formalism → process/regime → function/application.
+- Papers stay inside their `papers/` roots; process/regime and function/application splits are enforced.
+- Entry file names mirror their folders (no new `main.tex`).
 - Commands are conservative: no overwrites, no deletions.
 
 ## Quick Start
@@ -89,7 +116,7 @@ Papers must live inside numbered domains under stages (e.g., `01_formalism/00_do
 tex-repo init my-spec-repo
 cd my-spec-repo
 tex-repo nd 01_formalism admissible-forms
-tex-repo np 01_formalism/00_admissible-forms first-paper "Admissible Forms"
+tex-repo np 01_formalism/00_admissible-forms "Admissible Forms"
 tex-repo status
 ```
 

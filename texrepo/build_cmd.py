@@ -4,7 +4,8 @@ import subprocess
 from pathlib import Path
 
 from .common import find_repo_root, die, normalize_rel_path
-from .rules import STAGES, SPEC_DIR, SPEC_PAPER_REL
+from .rules import STAGE_PIPELINE, SPEC_REL, entry_tex_candidates
+from .latex_log_hints import extract_primary_error, suggest_fixes
 
 
 def needs_rebuild(paper_dir: Path) -> bool:
@@ -15,23 +16,31 @@ def needs_rebuild(paper_dir: Path) -> bool:
     - Any .tex file is newer than the PDF
     - Bibliography files are newer than the PDF
     """
-    pdf_output = paper_dir / "build" / "main.pdf"
-    
+    entry = None
+    for candidate in entry_tex_candidates(paper_dir):
+        if candidate.exists():
+            entry = candidate
+            break
+    if entry is None:
+        die(f"Not a paper directory (missing {paper_dir.name}.tex or main.tex): {paper_dir}")
+
+    pdf_output = paper_dir / "build" / f"{entry.stem}.pdf"
+
     if not pdf_output.exists():
         return True
-    
+
     pdf_mtime = pdf_output.stat().st_mtime
-    
+
     # Check all .tex files in the paper directory
     for tex_file in paper_dir.rglob("*.tex"):
         if tex_file.stat().st_mtime > pdf_mtime:
             return True
-    
+
     # Check bibliography file
     refs_bib = paper_dir / "refs.bib"
     if refs_bib.exists() and refs_bib.stat().st_mtime > pdf_mtime:
         return True
-    
+
     # Check shared files (preamble, macros, etc.) - they affect all papers
     repo_root = find_repo_root()
     shared_dir = repo_root / "shared"
@@ -39,7 +48,7 @@ def needs_rebuild(paper_dir: Path) -> bool:
         for shared_file in shared_dir.glob("*.tex"):
             if shared_file.stat().st_mtime > pdf_mtime:
                 return True
-    
+
     return False
 
 
@@ -49,21 +58,27 @@ def is_repo_root(path: Path) -> bool:
 
 
 def is_paper_dir(path: Path) -> bool:
-    """Check if path is a paper directory (contains main.tex)."""
-    return (path / "main.tex").is_file()
+    """Check if path is a paper directory (contains entry tex)."""
+    for candidate in entry_tex_candidates(path):
+        if candidate.is_file():
+            return True
+    return False
 
 
 def discover_papers(repo_root: Path) -> list[Path]:
-    """Find all paper directories by searching for main.tex under repo root."""
+    """Find all paper directories by searching for entry tex files under repo root."""
     papers = []
-    for main_tex in repo_root.rglob("main.tex"):
-        papers.append(main_tex.parent)
-    return papers
+    seen = set()
+    for tex_file in repo_root.rglob("*.tex"):
+        parent = tex_file.parent
+        if tex_file.name == f"{parent.name}.tex" or tex_file.name == "main.tex":
+            seen.add(parent)
+    return list(seen)
 
 
 def sort_papers_by_stage_and_domain(papers: list[Path]) -> list[Path]:
     """Sort papers by stage order, then domain number, then lexicographic order."""
-    stage_order = {stage: idx for idx, stage in enumerate(STAGES)}
+    stage_order = {stage: idx for idx, stage in enumerate(STAGE_PIPELINE)}
     
     def sort_key(paper: Path):
         parts = paper.parts
@@ -94,9 +109,17 @@ def sort_papers_by_stage_and_domain(papers: list[Path]) -> list[Path]:
 
 def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
     """Build a single paper with given arguments."""
-    if not is_paper_dir(paper_dir):
-        die(f"Not a paper directory (missing main.tex): {paper_dir}\n"
-            f"Hint: Run 'tex-repo np <domain> <paper-name>' to create a new paper")
+    entry = None
+    for candidate in entry_tex_candidates(paper_dir):
+        if candidate.exists():
+            entry = candidate
+            break
+    if entry is None:
+        die(
+            f"Not a paper directory (missing {paper_dir.name}.tex or main.tex): {paper_dir}\n"
+            f"Hint: Run 'tex-repo np <domain>/<paper-name>' to create a new paper"
+        )
+    log_path = paper_dir / "build" / f"{entry.stem}.log"
     
     # Check if rebuild is needed (unless --clean or --force is specified)
     if not args.clean and not getattr(args, 'force', False) and not needs_rebuild(paper_dir):
@@ -112,21 +135,44 @@ def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
             if f.is_file():
                 f.unlink()
     
-    if args.engine == "latexmk":
-        cmd = ["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error", "-outdir=build", "main.tex"]
-        print("▶", " ".join(cmd))
-        subprocess.run(cmd, cwd=str(paper_dir), check=True)
-    else:
-        # pdflatex requires multiple passes for references and citations
-        cmd = ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "-output-directory=build", "main.tex"]
+    try:
+        if args.engine == "latexmk":
+            cmd = ["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error", "-outdir=build", entry.name]
+            print("▶", " ".join(cmd))
+            subprocess.run(
+                cmd,
+                cwd=str(paper_dir),
+                check=True,
+                capture_output=not getattr(args, "verbose", False),
+                text=True,
+            )
+        else:
+            # pdflatex requires multiple passes for references and citations
+            cmd = ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "-output-directory=build", entry.name]
+            
+            print("▶ pdflatex pass 1/2")
+            subprocess.run(
+                cmd,
+                cwd=str(paper_dir),
+                check=True,
+                capture_output=not getattr(args, "verbose", False),
+                text=True,
+            )
+            
+            print("▶ pdflatex pass 2/2") 
+            subprocess.run(
+                cmd,
+                cwd=str(paper_dir),
+                check=True,
+                capture_output=not getattr(args, "verbose", False),
+                text=True,
+            )
         
-        print("▶ pdflatex pass 1/2")
-        subprocess.run(cmd, cwd=str(paper_dir), check=True)
-        
-        print("▶ pdflatex pass 2/2") 
-        subprocess.run(cmd, cwd=str(paper_dir), check=True)
-    
-    print(f"✅ Built: {paper_dir.relative_to(repo_root)} (output: build/)")
+        print(f"✅ Built: {paper_dir.relative_to(repo_root)} (output: build/)")
+    except subprocess.CalledProcessError:
+        _print_error_card(paper_dir, repo_root, entry, args)
+        rel_path = paper_dir.relative_to(repo_root)
+        die(f"Build failed for: {rel_path}")
 
 
 def cmd_build(args) -> int:
@@ -162,16 +208,47 @@ def cmd_build(args) -> int:
             # Current directory is a paper directory - build it
             paper_dir = current_dir
         elif is_repo_root(current_dir):
-            # Current directory is repo root - default to SPEC/spec
-            spec_path = repo / SPEC_PAPER_REL
+            # Current directory is repo root - default to world spec
+            spec_path = repo / SPEC_REL
             if not is_paper_dir(spec_path):
                 die(f"Default Spec paper not found: {spec_path}")
             paper_dir = spec_path
         else:
-            die(f"Not a paper directory (missing main.tex): {current_dir}")
+            die(f"Not a paper directory (missing {current_dir.name}.tex or main.tex): {current_dir}")
     else:
         # Target specified
         paper_dir = (repo / target).resolve()
     
     build_single_paper(paper_dir, repo, args)
     return 0
+
+
+def _print_error_card(paper_dir: Path, repo_root: Path, entry: Path, args) -> None:
+    log_path = paper_dir / "build" / f"{entry.stem}.log"
+    print("Build failed.")
+    if log_path.exists():
+        try:
+            log_text = log_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            log_text = None
+    else:
+        log_text = None
+
+    if log_text:
+        err = extract_primary_error(log_text)
+        primary_msg = err.get("message") or "No primary error detected"
+        line_info = f" (line {err.get('line')})" if err.get("line") else ""
+        print(f"Primary error: {primary_msg}{line_info}")
+
+        suggestions = suggest_fixes(err)
+        if suggestions:
+            print("Suggested action(s):")
+            for s in suggestions:
+                print(f"  - {s}")
+    else:
+        print("Primary error: log file not found")
+
+    if getattr(args, "verbose", False) and log_text:
+        print("\n--- LaTeX log (truncated) ---")
+        snippet = "\n".join(log_text.splitlines()[-50:])
+        print(snippet)

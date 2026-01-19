@@ -66,9 +66,10 @@ def test_basic_workflow():
         repo_path = Path('test-repo')
         assert repo_path.exists(), "Repository directory should exist"
         assert (repo_path / '.paperrepo').exists(), ".paperrepo should exist"
-        assert (repo_path / 'SPEC' / 'README.md').exists(), "SPEC/README.md should exist"
-        assert (repo_path / 'SPEC' / 'spec' / 'README.md').exists(), "Spec paper README should exist"
-        assert (repo_path / 'SPEC' / 'spec' / 'main.tex').exists(), "Spec paper should exist"
+        assert (repo_path / '00_world' / '00_foundation' / '00_foundation.tex').exists(), "Foundation paper should exist"
+        assert (repo_path / '00_world' / '00_foundation' / 'sections' / '00_definitions.tex').exists(), "Foundation sections should exist"
+        assert (repo_path / '00_world' / '01_spec' / '01_spec.tex').exists(), "Spec paper should exist"
+        assert (repo_path / '00_world' / '01_spec' / 'refs.bib').exists(), "Spec refs should exist"
         print("✅ Repository initialization works")
         
         # Enter the repository
@@ -82,20 +83,30 @@ def test_basic_workflow():
         
         # Test domain command  
         print("📁 Testing domain creation...")
-        result = run_texrepo(['nd', '03_applications', 'computer-vision'], cwd='.')
+        result = run_texrepo(['nd', '03_function_application/function', 'computer-vision'], cwd='.')
         assert result.returncode == 0, f"Domain creation should work: {result.stderr}"
-        assert Path('03_applications/00_computer-vision').exists(), "Domain directory should exist"
-        assert (Path('03_applications/00_computer-vision/README.md')).exists(), "Domain README should be created"
+        assert Path('03_function_application/function/papers/00_computer-vision').exists(), "Domain directory should exist"
+        assert (Path('03_function_application/function/papers/00_computer-vision/README.md')).exists(), "Domain README should be created"
         print("✅ Domain creation works")
+
+        # Test process/regime paper creation with auto papers/ insertion
+        print("🌊 Testing process/regime paper creation...")
+        result = run_texrepo(['np', '02_process_regime/process/black-hole'], cwd='.')
+        assert result.returncode == 0, f"Process paper creation failed: {result.stderr}"
+        process_paper = Path('02_process_regime/process/papers/black-hole')
+        assert process_paper.exists(), "Process paper directory should exist"
+        assert (process_paper / 'black-hole.tex').exists(), "Process entry file should match folder"
+        print("✅ Process/regime paper creation works")
         
         # Test new paper creation (in formalism stage)
         print("📄 Testing paper creation...")
         result = run_texrepo(['np', '01_formalism', 'test-paper', 'My Test Paper'], cwd='.')
         assert result.returncode == 0, f"Paper creation failed: {result.stderr}"
         
-        paper_path = Path('01_formalism/test-paper')
+        paper_path = Path('01_formalism/papers/test-paper')
         assert paper_path.exists(), "Paper directory should exist"
-        assert (paper_path / 'main.tex').exists(), "main.tex should exist"
+        assert (paper_path / 'test-paper.tex').exists(), "Entry file should exist"
+        assert not (paper_path / 'main.tex').exists(), "Legacy main.tex should not be created"
         assert (paper_path / 'README.md').exists(), "Paper README should exist"
         print("✅ Paper creation works")
         
@@ -142,7 +153,7 @@ def test_error_conditions():
         
         # Test invalid domain
         print("⚠️  Testing invalid domain access...")
-        result = run_texrepo(['np', 'nonexistent-domain', 'test-paper'], cwd='.')
+        result = run_texrepo(['np', '02_process_regime', 'test-paper'], cwd='.')
         assert result.returncode != 0, "Should fail with invalid domain"
         print("✅ Invalid domain properly rejected")
         

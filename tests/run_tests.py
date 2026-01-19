@@ -49,8 +49,15 @@ def main():
     # Find all test files
     test_files = [
         (test_dir / 'code' / 'test_enhancements.py', 'Enhancement Unit Tests'),
+        (test_dir / 'code' / 'test_latex_log_hints.py', 'LaTeX Log Hint Tests'),
         (test_dir / 'sample' / 'test_sample_workflow.py', 'Complete Workflow Test'),
+        (test_dir / 'sample' / 'test_latex_build_hints.py', 'LaTeX Build Hints End-to-End Test'),
         (test_dir / 'test_smoke_cli.py', 'CLI Smoke Tests'),
+        # World-first structure tests
+        (test_dir / 'code' / 'test_world_first_init.py', 'World-First Init Tests'),
+        (test_dir / 'code' / 'test_world_first_status.py', 'World-First Status Tests'),
+        (test_dir / 'code' / 'test_world_first_validation.py', 'World-First Validation Tests'),
+        (test_dir / 'code' / 'test_world_first_fix.py', 'World-First Fix Tests'),
     ]
     
     results = []

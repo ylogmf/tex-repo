@@ -42,11 +42,6 @@ def next_prefix(parent: Path) -> str:
 
 
 def relpath_to_shared(repo_root: Path, paper_dir: Path) -> str:
-    rel_to_root = Path(
-        Path.relpath(repo_root, paper_dir)  # type: ignore[attr-defined]
-    )
-    # On some python builds, Path.relpath isn't present, so do:
-    # rel_to_root = Path(__import__("os").path.relpath(repo_root, paper_dir))
     import os
     rel_to_root = Path(os.path.relpath(repo_root, paper_dir))
     return str(rel_to_root / "shared")

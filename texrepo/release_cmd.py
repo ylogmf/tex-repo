@@ -13,7 +13,15 @@ from typing import Optional
 
 from .build_cmd import build_single_paper, is_paper_dir
 from .common import find_repo_root, die, normalize_rel_path
+from .rules import entry_tex_candidates
 from .meta_cmd import parse_paperrepo_metadata
+
+
+def _find_entry_tex(paper_dir: Path) -> Path:
+    for candidate in entry_tex_candidates(paper_dir):
+        if candidate.exists():
+            return candidate
+    die(f"Entry .tex file missing (expected {paper_dir.name}.tex or main.tex): {paper_dir}")
 
 
 def compute_sha256(file_path: Path) -> str:
@@ -41,7 +49,7 @@ def get_git_commit(repo_root: Path) -> Optional[str]:
 
 
 def extract_latex_title(main_tex_path: Path) -> str:
-    """Extract title from LaTeX main.tex file."""
+    """Extract title from a paper entry .tex file."""
     try:
         content = main_tex_path.read_text(encoding='utf-8')
         
@@ -158,8 +166,8 @@ def copy_paper_sources(paper_dir: Path, sources_dir: Path) -> None:
     paper_sources_dir = sources_dir / "paper"
     paper_sources_dir.mkdir(parents=True, exist_ok=True)
     
-    # Copy main.tex
-    shutil.copy2(paper_dir / "main.tex", paper_sources_dir / "main.tex")
+    entry = _find_entry_tex(paper_dir)
+    shutil.copy2(entry, paper_sources_dir / entry.name)
     
     # Copy refs.bib if it exists
     refs_bib = paper_dir / "refs.bib"
@@ -173,7 +181,7 @@ def copy_paper_sources(paper_dir: Path, sources_dir: Path) -> None:
     
     # Copy any other .tex files in paper root
     for tex_file in paper_dir.glob("*.tex"):
-        if tex_file.name != "main.tex":  # main.tex already copied
+        if tex_file.name != entry.name:  # entry already copied
             shutil.copy2(tex_file, paper_sources_dir / tex_file.name)
 
 
@@ -210,6 +218,7 @@ def create_release_bundle(paper_dir: Path, repo_root: Path, release_id: str,
                         release_title: str, engine: str, label: Optional[str], 
                         args) -> None:
     """Create the complete release bundle."""
+    entry = _find_entry_tex(paper_dir)
     releases_dir = repo_root / "releases"
     release_dir_name = f"{release_id}__{release_title}"
     release_dir = releases_dir / release_dir_name
@@ -221,7 +230,8 @@ def create_release_bundle(paper_dir: Path, repo_root: Path, release_id: str,
     release_dir.mkdir(parents=True)
     
     # A) Copy PDF artifact
-    pdf_source = paper_dir / "build" / "main.pdf"
+    pdf_name = f"{entry.stem}.pdf"
+    pdf_source = paper_dir / "build" / pdf_name
     if not pdf_source.exists():
         # Build the paper first
         print(f"PDF not found, building paper...")
@@ -229,8 +239,8 @@ def create_release_bundle(paper_dir: Path, repo_root: Path, release_id: str,
         if not pdf_source.exists():
             die(f"Build failed: PDF not found at {pdf_source}")
     
-    shutil.copy2(pdf_source, release_dir / "main.pdf")
-    pdf_sha256 = compute_sha256(release_dir / "main.pdf")
+    shutil.copy2(pdf_source, release_dir / pdf_name)
+    pdf_sha256 = compute_sha256(release_dir / pdf_name)
     
     # B) Create source snapshot
     sources_dir = release_dir / "sources"
@@ -300,11 +310,11 @@ def cmd_release(args) -> int:
         die(f"Paper path does not exist: {paper_path_input}")
     
     if not is_paper_dir(paper_dir):
-        die(f"Not a paper directory (missing main.tex): {paper_path_input}")
+        die(f"Not a paper directory (missing {paper_dir.name}.tex or main.tex): {paper_path_input}")
     
     # Extract title from paper
-    main_tex_path = paper_dir / "main.tex"
-    release_title = extract_latex_title(main_tex_path)
+    entry_path = _find_entry_tex(paper_dir)
+    release_title = extract_latex_title(entry_path)
     
     # Generate release ID
     release_id = generate_release_id(getattr(args, 'label', None))
@@ -327,7 +337,7 @@ def cmd_release(args) -> int:
         print(f"✅ Created release: {rel_paper_path} -> {rel_release_path}")
         print(f"   Release ID: {release_id}")
         print(f"   Release title: {release_title}")
-        print(f"   Contents: main.pdf, sources/, MANIFEST.json, SHA256SUMS, RELEASE.txt")
+        print(f"   Contents: {entry_path.stem}.pdf, sources/, MANIFEST.json, SHA256SUMS, RELEASE.txt")
         
         return 0
         

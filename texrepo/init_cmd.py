@@ -3,14 +3,25 @@ from __future__ import annotations
 from pathlib import Path
 
 from .common import write_text
-from .rules import STAGES, SPEC_PAPER_REL, SPEC_DIR, STAGE_PIPELINE
+from .rules import (
+    STAGE_PIPELINE,
+    FOUNDATION_REL,
+    SPEC_REL,
+    PAPERS_DIRNAME,
+    PROCESS_BRANCHES,
+    FUNCTION_BRANCHES,
+    WORLD_DIR,
+    FORMALISM_DIR,
+    PROCESS_REGIME_DIR,
+    FUNCTION_APPLICATION_DIR,
+)
 from .meta_cmd import (
     escape_latex_string,
     prompt_for_metadata,
     sync_identity_tex,
     write_paperrepo_metadata,
 )
-from .config import get_paper_config
+from .paper_cmd import write_foundation_paper, write_spec_paper
 
 POLICY_START = "# >>> tex-repo policy"
 POLICY_END = "# <<< tex-repo policy"
@@ -183,16 +194,32 @@ def cmd_init(args) -> int:
     gitignore_path = repo / ".gitignore"
     write_text(gitignore_path, _gitignore_policy_block())
 
-    # stages
-    for s in STAGES:
-        (repo / s).mkdir(parents=True, exist_ok=True)
+    # staged directories
+    (repo / WORLD_DIR).mkdir(parents=True, exist_ok=True)
+    (repo / FORMALISM_DIR).mkdir(parents=True, exist_ok=True)
+    (repo / PROCESS_REGIME_DIR).mkdir(parents=True, exist_ok=True)
+    (repo / FUNCTION_APPLICATION_DIR).mkdir(parents=True, exist_ok=True)
 
-    # shared
+    # shared + misc
     (repo / "shared").mkdir(parents=True, exist_ok=True)
     (repo / "scripts").mkdir(parents=True, exist_ok=True)
     (repo / "98_context").mkdir(parents=True, exist_ok=True)
     (repo / "99_legacy").mkdir(parents=True, exist_ok=True)
-    
+    (repo / "releases").mkdir(parents=True, exist_ok=True)
+
+    # world layer
+    foundation_dir = repo / FOUNDATION_REL
+    spec_dir = repo / SPEC_REL
+    foundation_dir.mkdir(parents=True, exist_ok=True)
+    spec_dir.mkdir(parents=True, exist_ok=True)
+
+    # paper locations
+    (repo / FORMALISM_DIR / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
+    for branch in PROCESS_BRANCHES:
+        (repo / PROCESS_REGIME_DIR / branch / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
+    for branch in FUNCTION_BRANCHES:
+        (repo / FUNCTION_APPLICATION_DIR / branch / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
+
     # Generate identity.tex from metadata
     sync_identity_tex(repo)
 
@@ -207,7 +234,7 @@ def cmd_init(args) -> int:
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage[hidelinks]{hyperref}
-\usepackage[nameinlink,noabbrev]{cleveref}
+\usepackage{nameinlink,noabbrev]{cleveref}
 \usepackage[numbers]{natbib}
 
 \setlength{\parindent}{0pt}
@@ -244,88 +271,55 @@ def cmd_init(args) -> int:
 """,
     )
 
-    # create Spec paper (SPEC/spec)
-    spec_dir = repo / SPEC_PAPER_REL
-    (spec_dir / "sections").mkdir(parents=True, exist_ok=True)
-    (spec_dir / "build").mkdir(parents=True, exist_ok=True)
+    # Seed world papers
+    write_foundation_paper(repo, foundation_dir, "Foundation")
+    write_spec_paper(repo, spec_dir, "Spec")
 
-    write_text(spec_dir / "refs.bib", "% BibTeX entries here\n")
-
-    # Generate Spec paper main.tex with identity integration
-    config = get_paper_config(repo)
-    date_macro = r"\date{\today}" if metadata.get('date_policy', 'today') == 'today' else r"\date{}"
-    bib_style = metadata.get('default_bibliography_style', 'plainnat')
-    
-    section_count = config['section_count']
-    doc_class = config['document_class']
-    doc_options = config['document_options']
-    include_abstract = config['include_abstract']
-    
-    main_tex_content = rf"""\documentclass[{doc_options}]{{{doc_class}}}
-
-\input{{../../shared/preamble.tex}}
-\input{{../../shared/macros.tex}}
-\input{{../../shared/notation.tex}}
-\input{{../../shared/identity.tex}}
-
-\title{{\RepoProjectName Spec}}
-\author{{\RepoAuthorName \\ \RepoAuthorAffil}}
-{date_macro}
-
-\begin{{document}}
-\maketitle
-"""
-    
-    if include_abstract:
-        main_tex_content += r"""
-\begin{abstract}
-\input{sections/section_0}
-\end{abstract}
-"""
-    
-    # Add section inputs based on configuration
-    section_inputs = "\n".join([rf"\input{{sections/section_{i}}}" for i in range(1, section_count + 1)])
-    main_tex_content += f"\n{section_inputs}\n"
-    
-    main_tex_content += rf"""
-\bibliographystyle{{{bib_style}}}
-\bibliography{{refs}}
-
-\end{{document}}
-"""
-    
-    write_text(spec_dir / "main.tex", main_tex_content)
-
-    if include_abstract:
-        write_text(spec_dir / "sections" / "section_0.tex", "% Abstract\n\nWrite abstract here.\n")
-    
-    for i in range(1, section_count + 1):
-        section_path = spec_dir / "sections" / f"section_{i}.tex"
-        if i == 1 and text_content is not None:
-            safe_text = escape_latex_string(text_content)
-            if not safe_text.endswith("\n"):
-                safe_text += "\n"
-            write_text(section_path, f"\\section{{Section {i}}}\n\n{safe_text}")
-        else:
-            write_text(section_path, f"\\section{{Section {i}}}\n\nWrite here.\n")
+    if text_content is not None:
+        section_path = spec_dir / "sections" / "section_1.tex"
+        safe_text = escape_latex_string(text_content)
+        if not safe_text.endswith("\n"):
+            safe_text += "\n"
+        write_text(section_path, f"\\section{{Section 1}}\n\n{safe_text}")
 
     # Seed required READMEs without overwriting existing content
     _write_readme_if_missing(
-        repo / SPEC_DIR / "README.md",
-        "# Spec\n\nThis directory holds the Spec: primitives, constructors, forbidden constructs, and dependency direction. Everything else depends on it without modifying it.\n",
+        repo / WORLD_DIR / "README.md",
+        "# World\n\nShared foundation and spec papers live here.\n",
+    )
+    _write_readme_if_missing(
+        foundation_dir / "README.md",
+        "# Foundation\n\nImmutable foundations that all other layers rely on.\n",
     )
     _write_readme_if_missing(
         spec_dir / "README.md",
-        "# Spec Paper\n\nThe unique Spec paper for this repository. It must remain at SPEC/spec and is the immutable constraint layer.\n",
+        "# Spec\n\nThe primary specification paper for this repository.\n",
     )
     stage_readmes = {
-        "01_formalism": "# Formalism\n\nAdmissible forms, closures, and representations derived from the Spec.\n",
-        "02_processes": "# Processes\n\nNatural processes grounded in the Spec and expressed through the formalism.\n",
-        "03_applications": "# Applications\n\nHuman-built functions, models, and tools that depend on the Spec via the formalism and processes.\n",
-        "04_testbeds": "# Testbeds\n\nExperiments and validation environments for applications derived from the Spec.\n",
+        FORMALISM_DIR: "# Formalism\n\nAdmissible forms, closures, and representations grounded in the world layer.\n",
+        PROCESS_REGIME_DIR: "# Process Regime\n\nNatural processes and governing regimes built on the formalism.\n",
+        FUNCTION_APPLICATION_DIR: "# Function Application\n\nFunctions and applications that depend on process/regime outputs.\n",
     }
-    for stage in STAGE_PIPELINE:
+    for stage in STAGE_PIPELINE[1:]:
         _write_readme_if_missing(repo / stage / "README.md", stage_readmes.get(stage, ""))
+
+    # Subdomain READMEs
+    _write_readme_if_missing(
+        repo / PROCESS_REGIME_DIR / "process" / "README.md",
+        "# Process\n\nProcess-focused subjects belong here.\n",
+    )
+    _write_readme_if_missing(
+        repo / PROCESS_REGIME_DIR / "regime" / "README.md",
+        "# Regime\n\nRegime-focused subjects belong here.\n",
+    )
+    _write_readme_if_missing(
+        repo / FUNCTION_APPLICATION_DIR / "function" / "README.md",
+        "# Function\n\nFunction-focused subjects belong here.\n",
+    )
+    _write_readme_if_missing(
+        repo / FUNCTION_APPLICATION_DIR / "application" / "README.md",
+        "# Application\n\nApplication-focused subjects belong here.\n",
+    )
 
     print(f"✅ Initialized repo: {repo}")
     return 0

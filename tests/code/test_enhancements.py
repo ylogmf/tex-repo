@@ -110,12 +110,12 @@ default_engine = pdflatex
         # Create a paper and check it uses config
         main(['np', '01_formalism', 'test-paper', 'Test Paper'])
         
-        main_tex_content = Path('01_formalism/test-paper/main.tex').read_text()
+        main_tex_content = Path('01_formalism/papers/test-paper/test-paper.tex').read_text()
         assert 'report' in main_tex_content, "Should use report document class"
         assert '12pt' in main_tex_content, "Should use 12pt option"
         
         # Check section count (should be 5 sections)
-        sections_dir = Path('01_formalism/test-paper/sections')
+        sections_dir = Path('01_formalism/papers/test-paper/sections')
         section_files = list(sections_dir.glob('section_*.tex'))
         # Should have section_1.tex through section_5.tex (no section_0.tex due to include_abstract=false)
         assert len(section_files) == 5, f"Should have 5 section files, got {len(section_files)}"
@@ -138,7 +138,7 @@ def test_build_caching():
         # Create test paper
         main(['np', '01_formalism', 'test-cache', 'Test Caching'])
         
-        paper_dir = Path('01_formalism/test-cache')
+        paper_dir = Path('01_formalism/papers/test-cache')
         
         # Initially should need rebuild (no PDF)
         assert needs_rebuild(paper_dir), "Should need rebuild when PDF doesn't exist"
@@ -146,7 +146,7 @@ def test_build_caching():
         # Create a fake PDF to test caching
         build_dir = paper_dir / 'build'
         build_dir.mkdir(exist_ok=True)
-        pdf_file = build_dir / 'main.pdf'
+        pdf_file = build_dir / 'test-cache.pdf'
         pdf_file.write_text("fake pdf")
         
         # Set PDF timestamp to now
@@ -158,7 +158,7 @@ def test_build_caching():
         
         # Touch a source file to make it newer
         time.sleep(0.1)  # Ensure different timestamp
-        main_tex = paper_dir / 'main.tex'
+        main_tex = paper_dir / 'test-cache.tex'
         main_tex.touch()
         
         # Should need rebuild now
@@ -181,7 +181,7 @@ def test_improved_error_messages():
         
         # Test error when domain doesn't exist
         try:
-            main(['np', 'nonexistent-domain', 'test-paper'])
+            main(['np', '02_process_regime', 'test-paper'])
             assert False, "Should have failed with error"
         except (SystemExit, TexRepoError):
             # Expected - the die() function calls sys.exit()

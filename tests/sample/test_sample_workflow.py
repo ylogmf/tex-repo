@@ -102,17 +102,16 @@ date_format = submission
     # Create domains
     domain_specs = [
         ('01_formalism', 'forms'),
-        ('02_processes', 'process-models'),
-        ('03_applications', 'vision'),
+        ('02_process_regime/process', 'process-models'),
+        ('03_function_application/application', 'vision'),
     ]
-    for stage, name in domain_specs:
-        main(['nd', stage, name])
+    for parent, name in domain_specs:
+        main(['nd', parent, name])
 
     # Create papers in different domains
     papers = [
         {
-            'domain': '01_formalism/00_forms',
-            'name': 'spec-derived-forms',
+            'path': '01_formalism/papers/00_forms',
             'title': 'Admissible Forms from the Spec',
             'content': {
                 'abstract': 'Formal structures derived directly from the Spec.',
@@ -124,8 +123,7 @@ date_format = submission
             }
         },
         {
-            'domain': '02_processes/00_process-models',
-            'name': 'process-analysis',
+            'path': '02_process_regime/process/papers/00_process-models',
             'title': 'Processes Anchored in the Spec',
             'content': {
                 'abstract': 'Process descriptions tied to the formalism.',
@@ -137,8 +135,7 @@ date_format = submission
             }
         },
         {
-            'domain': '03_applications/00_vision',
-            'name': 'vision-transformers',
+            'path': '03_function_application/application/papers/00_vision',
             'title': 'Efficient Vision Transformers for Real-Time Object Detection',
             'content': {
                 'abstract': 'We propose a lightweight vision transformer architecture optimized for real-time object detection.',
@@ -156,14 +153,14 @@ date_format = submission
         print(f"📄 Creating paper: {paper['title']}")
         
         # Create the paper structure
-        result = main(['np', paper['domain'], paper['name'], paper['title']])
-        assert result == 0, f"Paper creation should succeed for {paper['name']}"
+        result = main(['np', paper['path'], paper['title']])
+        assert result == 0, f"Paper creation should succeed for {paper['path']}"
         
-        paper_dir = Path(paper['domain']) / paper['name']
+        paper_dir = Path(paper['path'])
         
         # Add content to sections
         if paper['content']['abstract']:
-            abstract_file = paper_dir / 'sections' / 'abstract.tex'
+            abstract_file = paper_dir / 'sections' / 'section_0.tex'
             if abstract_file.exists():
                 with open(abstract_file, 'w') as f:
                     f.write(paper['content']['abstract'])
@@ -177,7 +174,7 @@ date_format = submission
                     f.write(paper['content'][section_key])
         
         # Add some bibliography entries
-        bib_file = paper_dir / 'bibliography.bib'
+        bib_file = paper_dir / 'refs.bib'
         sample_bib = f"""@article{{bengio2013representation,
   title={{Representation learning: A review and new perspectives}},
   author={{Bengio, Yoshua and Courville, Aaron and Vincent, Pascal}},
@@ -203,7 +200,7 @@ date_format = submission
         with open(bib_file, 'w') as f:
             f.write(sample_bib)
         
-        print(f"✅ Paper {paper['name']} created with content")
+        print(f"✅ Paper {paper['path']} created with content")
     
     print("📊 Repository status:")
     result = main(['status'])
@@ -211,7 +208,7 @@ date_format = submission
     # Test building one paper
     print("\n🔨 Testing build system...")
     try:
-        result = main(['b', '01_formalism/00_forms/spec-derived-forms'])
+        result = main(['b', '01_formalism/papers/00_forms'])
         if result == 0:
             print("✅ Build completed successfully")
         else:
@@ -221,7 +218,7 @@ date_format = submission
     
     print("\n🎯 Testing forced rebuild...")
     try:
-        result = main(['b', '--force', '03_applications/00_vision/vision-transformers'])
+        result = main(['b', '--force', '03_function_application/application/papers/00_vision'])
         print("✅ Forced build completed")
     except Exception as e:
         print(f"⚠️  Forced build failed (expected if LaTeX not installed): {e}")

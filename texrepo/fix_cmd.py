@@ -4,9 +4,20 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 from .common import find_repo_root, die, write_text
-from .config import DEFAULT_CONFIG, create_default_config
-from .meta_cmd import parse_paperrepo_metadata, sync_identity_tex
-from .rules import STAGES, SPEC_DIR, SPEC_PAPER_REL, STAGE_PIPELINE
+from .config import create_default_config
+from .meta_cmd import sync_identity_tex
+from .rules import (
+    FOUNDATION_REL,
+    SPEC_REL,
+    PAPERS_DIRNAME,
+    PROCESS_BRANCHES,
+    FUNCTION_BRANCHES,
+    WORLD_DIR,
+    FORMALISM_DIR,
+    PROCESS_REGIME_DIR,
+    FUNCTION_APPLICATION_DIR,
+)
+from .paper_cmd import build_generic_main_content, build_foundation_main_content
 
 POLICY_START = "# >>> tex-repo policy"
 POLICY_END = "# <<< tex-repo policy"
@@ -218,13 +229,25 @@ def fix_repository_structure(repo_root: Path, result: FixResult, dry_run: bool =
     print("Checking repository folder structure...")
     
     # Top-level stage folders
-    for stage in STAGES:
+    top_levels = [WORLD_DIR, FORMALISM_DIR, PROCESS_REGIME_DIR, FUNCTION_APPLICATION_DIR]
+    for stage in top_levels:
         check_and_create_directory(repo_root / stage, result, dry_run)
-    
+
     # Additional allowed folders
-    extra_folders = ["98_context", "99_legacy", "shared", "scripts"]
+    extra_folders = ["98_context", "99_legacy", "shared", "scripts", "releases"]
     for folder in extra_folders:
         check_and_create_directory(repo_root / folder, result, dry_run)
+
+    # World layer
+    check_and_create_directory(repo_root / FOUNDATION_REL, result, dry_run)
+    check_and_create_directory(repo_root / SPEC_REL, result, dry_run)
+
+    # Paper parents
+    check_and_create_directory(repo_root / FORMALISM_DIR / PAPERS_DIRNAME, result, dry_run)
+    for branch in PROCESS_BRANCHES:
+        check_and_create_directory(repo_root / PROCESS_REGIME_DIR / branch / PAPERS_DIRNAME, result, dry_run)
+    for branch in FUNCTION_BRANCHES:
+        check_and_create_directory(repo_root / FUNCTION_APPLICATION_DIR / branch / PAPERS_DIRNAME, result, dry_run)
 
 
 def fix_repository_files(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
@@ -323,117 +346,113 @@ def fix_readmes(repo_root: Path, result: FixResult, dry_run: bool = False) -> No
     print("Checking required README files...")
 
     ensure_readme(
-        repo_root / SPEC_DIR / "README.md",
-        "# Spec\n\nThis directory holds the Spec: primitives, constructors, forbidden constructs, and dependency direction. Everything else depends on it without modifying it.\n",
+        repo_root / WORLD_DIR / "README.md",
+        "# World\n\nShared foundation and spec papers live here.\n",
         result,
         dry_run,
     )
     ensure_readme(
-        repo_root / SPEC_PAPER_REL / "README.md",
-        "# Spec Paper\n\nThe unique Spec paper for this repository. It must remain at SPEC/spec and is the immutable constraint layer.\n",
+        repo_root / FOUNDATION_REL / "README.md",
+        "# Foundation\n\nImmutable foundations that all other layers rely on.\n",
+        result,
+        dry_run,
+    )
+    ensure_readme(
+        repo_root / SPEC_REL / "README.md",
+        "# Spec\n\nThe primary specification paper for this repository.\n",
         result,
         dry_run,
     )
 
     stage_readmes = {
-        "01_formalism": "# Formalism\n\nAdmissible forms, closures, and representations derived from the Spec.\n",
-        "02_processes": "# Processes\n\nNatural processes grounded in the Spec and expressed through the formalism.\n",
-        "03_applications": "# Applications\n\nHuman-built functions, models, and tools that depend on the Spec via the formalism and processes.\n",
-        "04_testbeds": "# Testbeds\n\nExperiments and validation environments for applications derived from the Spec.\n",
+        FORMALISM_DIR: "# Formalism\n\nAdmissible forms, closures, and representations grounded in the world layer.\n",
+        PROCESS_REGIME_DIR: "# Process Regime\n\nNatural processes and governing regimes built on the formalism.\n",
+        FUNCTION_APPLICATION_DIR: "# Function Application\n\nFunctions and applications that depend on process/regime outputs.\n",
     }
 
-    # Stage README files
-    for stage in STAGE_PIPELINE:
-        ensure_readme(repo_root / stage / "README.md", stage_readmes.get(stage, ""), result, dry_run)
+    for stage, content in stage_readmes.items():
+        ensure_readme(repo_root / stage / "README.md", content, result, dry_run)
 
-    # Domain and paper README files
-    for stage in STAGE_PIPELINE:
-        stage_path = repo_root / stage
-        if not stage_path.exists():
+    branch_readmes = {
+        repo_root / PROCESS_REGIME_DIR / "process" / "README.md": "# Process\n\nProcess-focused subjects belong here.\n",
+        repo_root / PROCESS_REGIME_DIR / "regime" / "README.md": "# Regime\n\nRegime-focused subjects belong here.\n",
+        repo_root / FUNCTION_APPLICATION_DIR / "function" / "README.md": "# Function\n\nFunction-focused subjects belong here.\n",
+        repo_root / FUNCTION_APPLICATION_DIR / "application" / "README.md": "# Application\n\nApplication-focused subjects belong here.\n",
+    }
+    for path, content in branch_readmes.items():
+        ensure_readme(path, content, result, dry_run)
+
+    paper_parents = [
+        repo_root / FORMALISM_DIR / PAPERS_DIRNAME,
+        repo_root / PROCESS_REGIME_DIR / "process" / PAPERS_DIRNAME,
+        repo_root / PROCESS_REGIME_DIR / "regime" / PAPERS_DIRNAME,
+        repo_root / FUNCTION_APPLICATION_DIR / "function" / PAPERS_DIRNAME,
+        repo_root / FUNCTION_APPLICATION_DIR / "application" / PAPERS_DIRNAME,
+    ]
+    for parent in paper_parents:
+        if not parent.exists():
             continue
-        for domain in stage_path.iterdir():
-            if not domain.is_dir():
+        for paper_dir in parent.iterdir():
+            if not paper_dir.is_dir():
                 continue
-            ensure_readme(
-                domain / "README.md",
-                f"# {domain.name}\n\nDomain under {stage} that inherits constraints from the Spec.\n",
-                result,
-                dry_run,
-            )
-            for paper_dir in domain.iterdir():
-                if not paper_dir.is_dir():
-                    continue
-                if (paper_dir / "main.tex").exists():
-                    ensure_readme(
-                        paper_dir / "README.md",
-                        "# Paper\n\nThis paper depends on the Spec via its enclosing domain and stage.\n",
-                        result,
-                        dry_run,
-                    )
+            if (paper_dir / f"{paper_dir.name}.tex").exists() or (paper_dir / "main.tex").exists():
+                ensure_readme(
+                    paper_dir / "README.md",
+                    "# Paper\n\nThis paper depends on the world layer via its enclosing domain.\n",
+                    result,
+                    dry_run,
+                )
 
-def fix_spec_paper(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
-    """Fix Spec paper skeleton."""
-    print("Checking Spec paper skeleton...")
-    
-    spec_dir = repo_root / SPEC_PAPER_REL
-    
-    # Spec directory structure
-    check_and_create_directory(spec_dir, result, dry_run)
-    check_and_create_directory(spec_dir / "sections", result, dry_run)
-    check_and_create_directory(spec_dir / "build", result, dry_run)
-    
-    # refs.bib
-    refs_content = "% BibTeX entries here\n"
-    check_and_create_file(spec_dir / "refs.bib", refs_content, result, dry_run)
-    
-    # main.tex
-    main_tex_content = r"""\documentclass[11pt]{article}
+def fix_world_papers(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
+    """Fix world-layer paper skeletons."""
+    print("Checking world paper skeletons...")
 
-\input{../../shared/preamble.tex}
-\input{../../shared/macros.tex}
-\input{../../shared/notation.tex}
-\input{../../shared/identity.tex}
+    foundation_dir = repo_root / FOUNDATION_REL
+    spec_dir = repo_root / SPEC_REL
 
-\title{Spec}
-\author{Author Name \\ Organization}
-\date{\today}
+    for path in [
+        foundation_dir,
+        foundation_dir / "sections",
+        foundation_dir / "build",
+        spec_dir,
+        spec_dir / "sections",
+        spec_dir / "build",
+    ]:
+        check_and_create_directory(path, result, dry_run)
 
-\begin{document}
-\maketitle
+    # Foundation
+    foundation_main = build_foundation_main_content(repo_root, foundation_dir, "Foundation")
+    check_and_create_file(foundation_dir / "refs.bib", "% BibTeX entries here\n", result, dry_run)
+    check_and_create_file(foundation_dir / f"{foundation_dir.name}.tex", foundation_main, result, dry_run)
+    check_and_create_file(
+        foundation_dir / "sections" / "00_definitions.tex",
+        "% Core definitions live here.\n",
+        result,
+        dry_run,
+    )
+    check_and_create_file(
+        foundation_dir / "sections" / "01_axioms.tex",
+        "% Axioms and governing principles live here.\n",
+        result,
+        dry_run,
+    )
 
-\begin{abstract}
-\input{sections/section_0}
-\end{abstract}
+    # Spec
+    spec_main, section_count, include_abstract = build_generic_main_content(repo_root, spec_dir, "Spec")
+    check_and_create_file(spec_dir / "refs.bib", "% BibTeX entries here\n", result, dry_run)
+    check_and_create_file(spec_dir / f"{spec_dir.name}.tex", spec_main, result, dry_run)
 
-\input{sections/section_1}
-\input{sections/section_2}
-\input{sections/section_3}
-\input{sections/section_4}
-\input{sections/section_5}
-\input{sections/section_6}
-\input{sections/section_7}
-\input{sections/section_8}
-\input{sections/section_9}
-\input{sections/section_10}
+    if include_abstract:
+        check_and_create_file(
+            spec_dir / "sections" / "section_0.tex",
+            "% Abstract\n\nWrite abstract here.\n",
+            result,
+            dry_run,
+        )
 
-\bibliographystyle{plainnat}
-\bibliography{refs}
-
-\end{document}
-"""
-    check_and_create_file(spec_dir / "main.tex", main_tex_content, result, dry_run)
-    
-    # Section files
-    sections_dir = spec_dir / "sections"
-    
-    # Abstract (section_0.tex)
-    abstract_content = "% Abstract\n\nWrite abstract here.\n"
-    check_and_create_file(sections_dir / "section_0.tex", abstract_content, result, dry_run)
-    
-    # Content sections (section_1.tex to section_10.tex)
-    for i in range(1, 11):
+    for i in range(1, section_count + 1):
         section_content = f"\\section{{Section {i}}}\n\nWrite here.\n"
-        check_and_create_file(sections_dir / f"section_{i}.tex", section_content, result, dry_run)
+        check_and_create_file(spec_dir / "sections" / f"section_{i}.tex", section_content, result, dry_run)
 
 
 def print_fix_results(result: FixResult, dry_run: bool = False) -> None:
@@ -482,7 +501,7 @@ def cmd_fix(args) -> int:
         fix_repository_structure(repo_root, result, dry_run)
         fix_repository_files(repo_root, result, dry_run)
         fix_shared_files(repo_root, result, dry_run)
-        fix_spec_paper(repo_root, result, dry_run)
+        fix_world_papers(repo_root, result, dry_run)
         fix_readmes(repo_root, result, dry_run)
         
         # Print results

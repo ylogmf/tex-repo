@@ -17,17 +17,17 @@ from .install_cmd import execute_guide
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tex-repo",
-        description="LaTeX Theory Repository Manager - Organize mathematical research with structured, staged development"
+        description="LaTeX Theory Repository Manager - World-first, layered development with immutable foundations"
     )
     sub = p.add_subparsers(dest="cmd", required=True, title="Available commands", metavar="COMMAND")
 
     p_init = sub.add_parser(
         "init",
-        help="Initialize a new LaTeX theory repository with staged structure and metadata",
+        help="Initialize a new LaTeX theory repository with world-first layered structure and metadata",
         description="""
 Initialize a new tex-repo. You can provide either a repository name or a path to a
 plain text file (.txt). When a text file is provided, its content is imported into
-the Spec paper's first section.
+the world spec paper's first section (00_world/01_spec/sections/section_1.tex).
 """,
     )
     p_init.add_argument(
@@ -37,16 +37,16 @@ the Spec paper's first section.
     p_init.add_argument(
         "source_text",
         nargs="?",
-        help="Optional path to a .txt file whose contents seed SPEC/spec/sections/section_1.tex",
+        help="Optional path to a .txt file whose contents seed 00_world/01_spec/sections/section_1.tex",
     )
     p_init.set_defaults(fn=cmd_init)
 
-    p_nd = sub.add_parser("nd", help="Create a new research domain under a stage with automatic numbering (00_, 01_, etc.)")
-    p_nd.add_argument("parent_path", help="Parent stage path (e.g., '01_formalism') or existing domain path")
-    p_nd.add_argument("domain_name", help="Descriptive name for the research domain (e.g., 'quantum-mechanics')")
+    p_nd = sub.add_parser("nd", help="Create a new folder under the correct papers/ root with automatic numbering (00_, 01_, etc.)")
+    p_nd.add_argument("parent_path", help="Parent path (e.g., '01_formalism', '02_process_regime/process', '03_function_application/application')")
+    p_nd.add_argument("domain_name", help="Descriptive name for the research domain or topic (e.g., 'quantum-mechanics')")
     p_nd.set_defaults(fn=cmd_nd)
 
-    p_np = sub.add_parser("np", help="Create a new paper with LaTeX template, sections, and bibliography within a domain")
+    p_np = sub.add_parser("np", help="Create a new paper with LaTeX template, sections, and bibliography (entry file matches folder name)")
     # Supports: np domain_path slug [title]  OR  np domain_path/slug [title]
     p_np.add_argument("path_or_domain", help="Target domain path (e.g., '01_formalism/00_algebra') or full paper path")
     p_np.add_argument("maybe_slug", nargs="?", help="URL-friendly paper identifier (optional if included in first argument)")
@@ -63,6 +63,7 @@ runs twice automatically to resolve references and citations.
     p_b.add_argument("--engine", default="latexmk", choices=["latexmk", "pdflatex"], help="LaTeX compilation engine. latexmk auto-reruns until stable, pdflatex runs twice")
     p_b.add_argument("--clean", action="store_true", help="Remove build artifacts before compilation")
     p_b.add_argument("--force", action="store_true", help="Force rebuild even if output is up-to-date")
+    p_b.add_argument("--verbose", action="store_true", help="Show full build output and trailing log snippet on failure")
     p_b.set_defaults(fn=cmd_build)
 
     p_status = sub.add_parser("status", help="Validate repository structure and show compliance with tex-repo conventions")
@@ -84,7 +85,7 @@ Release bundles are stored at the repository level in releases/ directory and tr
 index.jsonl for audit trail. Each release creates a unique directory with paper-aware naming.
 """)
     p_release.add_argument("paper_path", 
-                          help="Path to paper directory relative to repository root (e.g., 'SPEC/spec', '01_formalism/lemma1')")
+                          help="Path to paper directory relative to repository root (e.g., '00_world/01_spec', '01_formalism/papers/00_topic')")
     p_release.add_argument("--label", 
                           help="Descriptive label for the release (e.g., 'submitted', 'camera-ready'). Optional.")
     p_release.add_argument("--engine", default="latexmk", choices=["latexmk", "pdflatex"], 
