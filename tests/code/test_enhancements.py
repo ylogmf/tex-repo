@@ -180,22 +180,14 @@ def test_improved_error_messages():
         os.chdir('error-test')
         
         # Test error when domain doesn't exist
-        try:
-            main(['np', '02_process_regime', 'test-paper'])
-            assert False, "Should have failed with error"
-        except (SystemExit, TexRepoError):
-            # Expected - the die() function calls sys.exit()
-            pass
+        rc = main(['np', '02_process_regime', 'test-paper'])
+        assert rc != 0, "Should have failed with invalid parent error"
         
         # Test error when paper already exists
         main(['np', '01_formalism', 'duplicate-test'])
         
-        try:
-            main(['np', '01_formalism', 'duplicate-test'])
-            assert False, "Should have failed with duplicate paper error"
-        except (SystemExit, TexRepoError):
-            # Expected
-            pass
+        rc = main(['np', '01_formalism', 'duplicate-test'])
+        assert rc != 0, "Should have failed with duplicate paper error"
         
         print("✅ Improved error messages test passed")
 

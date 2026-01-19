@@ -153,7 +153,43 @@ l.15 This paper will fail because it uses \\cref
             # Should suggest cleveref package
             output_lower = output.lower()
             self.assertIn("cleveref", output_lower, 
-                        f"Should suggest cleveref package for \\cref command. Output: {output}")
+                          f"Should suggest cleveref package for \\cref command. Output: {output}")
+
+    def test_cli_build_failure_no_traceback(self):
+        """Ensure CLI build failure does not emit Python tracebacks by default."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            (repo_path / ".paperrepo").write_text("paperrepo=1\n", encoding="utf-8")
+
+            paper_dir = repo_path / "01_formalism" / "papers" / "00_trace"
+            paper_dir.mkdir(parents=True, exist_ok=True)
+            entry_file = paper_dir / "00_trace.tex"
+            entry_file.write_text("\\documentclass{article}\\begin{document}Test\\end{document}", encoding="utf-8")
+
+            build_dir = paper_dir / "build"
+            build_dir.mkdir(parents=True, exist_ok=True)
+            (build_dir / "00_trace.log").write_text("! LaTeX Error: File `cleveref.sty' not found.\n", encoding="utf-8")
+
+            # Fake latexmk that always fails
+            fake_bin = repo_path / "bin"
+            fake_bin.mkdir(parents=True, exist_ok=True)
+            fake_latexmk = fake_bin / "latexmk"
+            fake_latexmk.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            fake_latexmk.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}:{env.get('PATH','')}"
+            env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{env.get('PYTHONPATH','')}"
+
+            cmd = [sys.executable, "-m", "texrepo", "b", "01_formalism/papers/00_trace"]
+            result = subprocess.run(cmd, cwd=repo_path, capture_output=True, text=True, env=env)
+
+            self.assertNotEqual(result.returncode, 0, "Build should fail")
+            combined_output = result.stdout + result.stderr
+            self.assertIn("Build failed", combined_output)
+            self.assertIn("Primary error:", combined_output)
+            self.assertIn("Suggested action", combined_output)
+            self.assertNotIn("Traceback", combined_output, "Traceback should not appear without --verbose")
     
     def test_error_card_with_missing_package_file(self):
         """Test that _print_error_card handles missing package files."""

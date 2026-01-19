@@ -185,17 +185,20 @@ def test_cli_smoke():
         # Try to create domain under 00_world
         result = run_texrepo_cmd(["nd", "00_world", "invalid_domain"], cwd=repo_path)
         assert result.returncode != 0, "Domain creation under 00_world should fail"
-        assert "E[INVALID_PARENT]" in result.stderr, "Should reject world domain"
+        combined = result.stdout + result.stderr
+        assert "E[INVALID_PARENT]" in combined, "Should reject world domain"
         
         # Try to create paper under invalid world path
         result = run_texrepo_cmd(["np", "00_world/02_invalid", "Invalid"], cwd=repo_path)
         assert result.returncode != 0, "Paper creation under invalid world path should fail"
-        assert "E[INVALID_PARENT]" in result.stderr, "Should reject invalid world paper"
+        combined = result.stdout + result.stderr
+        assert "E[INVALID_PARENT]" in combined, "Should reject invalid world paper"
         
         # Try to create paper under unknown stage
         result = run_texrepo_cmd(["np", "SPEC/thing"], cwd=repo_path)
         assert result.returncode != 0, "Paper creation under unknown stage should fail"
-        assert "E[INVALID_PARENT]" in result.stderr, "Should reject unknown stage"
+        combined = result.stdout + result.stderr
+        assert "E[INVALID_PARENT]" in combined, "Should reject unknown stage"
         
         print("✅ Protected area checks work")
         

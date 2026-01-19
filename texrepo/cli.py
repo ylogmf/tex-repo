@@ -153,4 +153,13 @@ Use 'tex-repo env guide' to generate a guide first.
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return int(args.fn(args) or 0)
+    from .common import TexRepoError
+    try:
+        return int(args.fn(args) or 0)
+    except TexRepoError as e:
+        if getattr(args, "verbose", False):
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"ERROR: {e}")
+        return 1
