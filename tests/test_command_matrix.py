@@ -522,6 +522,48 @@ class TestBuildCommand:
         # Build all
         result = run_texrepo(["b", "all"], cwd=repo_path)
         assert result.returncode == 0, f"build all failed: {result.stdout}\n{result.stderr}"
+    
+    def test_introduction_index_generation(self, tmp_path):
+        """Test that building introduction generates sections_index.tex correctly."""
+        repo_path = tmp_path / "intro-index-repo"
+        
+        run_texrepo(
+            ["init", str(repo_path), "--layout", "new"],
+            cwd=tmp_path,
+            input_text=default_metadata_input(),
+            check=True,
+        )
+        
+        # Create two sections
+        run_texrepo(["ns", "foundations"], cwd=repo_path, check=True)
+        run_texrepo(["ns", "applications"], cwd=repo_path, check=True)
+        
+        # Build introduction
+        result = run_texrepo(["b", "00_introduction"], cwd=repo_path)
+        assert result.returncode == 0, f"build failed: {result.stdout}\n{result.stderr}"
+        
+        # Check that sections_index.tex was generated
+        index_file = repo_path / "00_introduction" / "build" / "sections_index.tex"
+        assert index_file.exists(), "sections_index.tex should be generated"
+        
+        index_content = index_file.read_text()
+        
+        # Check that both sections are included in order
+        assert r"\section{foundations}" in index_content
+        assert r"\section{applications}" in index_content
+        
+        # Check section order
+        foundations_pos = index_content.find(r"\section{foundations}")
+        applications_pos = index_content.find(r"\section{applications}")
+        assert foundations_pos < applications_pos, "Sections should be in numeric order"
+        
+        # Check that subsection files are included
+        assert r"\input{sections/01_foundations/1-1.tex}" in index_content
+        assert r"\input{sections/02_applications/2-1.tex}" in index_content
+        
+        # Verify PDF was created
+        pdf_path = repo_path / "00_introduction" / "build" / "00_introduction.pdf"
+        assert pdf_path.exists(), "PDF should be generated"
 
 
 class TestReleaseCommand:

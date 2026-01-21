@@ -333,8 +333,9 @@ def cmd_init(args) -> int:
 \begin{document}
 \maketitle
 
-% Section files will be created under sections/ using the ns command
-% Example: \input{sections/01_section_name/1-1.tex}
+% Sections are automatically included from build/sections_index.tex
+% This file is regenerated on each build based on sections/ folder contents
+\input{build/sections_index.tex}
 
 \end{document}
 """

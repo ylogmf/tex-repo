@@ -7,6 +7,7 @@ from .common import find_repo_root, die, normalize_rel_path
 from .rules import STAGE_PIPELINE, entry_tex_candidates
 from .latex_log_hints import extract_primary_error, suggest_fixes
 from .layouts import get_layout
+from .introduction_index import generate_introduction_index
 
 
 def needs_rebuild(paper_dir: Path) -> bool:
@@ -125,6 +126,8 @@ def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
     """Build a single paper with given arguments."""
     # Handle introduction book (00_introduction)
     if is_introduction_book(paper_dir):
+        # Generate sections index before building
+        generate_introduction_index(paper_dir)
         entry = paper_dir / f"{paper_dir.name}.tex"
     else:
         # Regular paper: look for entry file
