@@ -12,46 +12,62 @@ from .release_cmd import cmd_release
 from .fix_cmd import cmd_fix
 from .env_cmd import check_environment, generate_guide
 from .install_cmd import execute_guide
+from .section_cmd import cmd_ns
+from .layouts import DEFAULT_LAYOUT, LAYOUTS
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tex-repo",
-        description="LaTeX Theory Repository Manager - World-first, layered development with immutable foundations"
+        description="LaTeX Theory Repository Manager - layered development with immutable foundations"
     )
     sub = p.add_subparsers(dest="cmd", required=True, title="Available commands", metavar="COMMAND")
 
     p_init = sub.add_parser(
         "init",
-        help="Initialize a new LaTeX theory repository with world-first layered structure and metadata",
+        help="Initialize a new LaTeX theory repository with layered structure and metadata",
         description="""
-Initialize a new tex-repo. You can provide either a repository name or a path to a
-plain text file (.txt). When a text file is provided, its content is imported into
-the world spec paper's first section (00_world/01_spec/sections/section_1.tex).
+Initialize a new tex-repo with a book-scale introduction (00_introduction/) and paper-scale
+stages (process, function, hypnosis). Use the 'ns' command to add sections to the introduction.
+The default layout is 'new' (introduction-first). Use --layout old for the legacy world-based layout.
 """,
     )
     p_init.add_argument(
         "target",
-        help="Repository name or path to a .txt file for text-based initialization",
+        help="Repository name for the new tex-repo",
     )
     p_init.add_argument(
-        "source_text",
-        nargs="?",
-        help="Optional path to a .txt file whose contents seed 00_world/01_spec/sections/section_1.tex",
+        "--legacy-seed-text",
+        metavar="PATH",
+        help="[LEGACY] Path to a .txt file whose contents seed 00_world/01_spec/sections/section_1.tex (old layout only)",
+    )
+    p_init.add_argument(
+        "--layout",
+        choices=sorted(LAYOUTS.keys()),
+        default="new",
+        help="Choose repository layout (default: new; introduction is book-structured)",
     )
     p_init.set_defaults(fn=cmd_init)
 
     p_nd = sub.add_parser("nd", help="Create a new folder under the correct papers/ root with automatic numbering (00_, 01_, etc.)")
-    p_nd.add_argument("parent_path", help="Parent path (e.g., '01_formalism', '02_process_regime/process', '03_function_application/application')")
+    p_nd.add_argument("parent_path", help="Parent path (e.g., '01_process_regime/process', '02_function_application/application'); not for 00_introduction (use ns).")
     p_nd.add_argument("domain_name", help="Descriptive name for the research domain or topic (e.g., 'quantum-mechanics')")
     p_nd.set_defaults(fn=cmd_nd)
 
     p_np = sub.add_parser("np", help="Create a new paper with LaTeX template, sections, and bibliography (entry file matches folder name)")
     # Supports: np domain_path slug [title]  OR  np domain_path/slug [title]
-    p_np.add_argument("path_or_domain", help="Target domain path (e.g., '01_formalism/00_algebra') or full paper path")
+    p_np.add_argument("path_or_domain", help="Target domain path (e.g., '01_process_regime/process/00_topic') or full paper path; not for 00_introduction (use ns).")
     p_np.add_argument("maybe_slug", nargs="?", help="URL-friendly paper identifier (optional if included in first argument)")
     p_np.add_argument("title", nargs="?", default="Untitled Paper", help="Human-readable title for the paper (default: 'Untitled Paper')")
     p_np.set_defaults(fn=cmd_np)
+
+    p_ns = sub.add_parser(
+        "ns",
+        help="Create a numbered section within the introduction book (00_introduction/) with 10 subsection files",
+        description="Create the next numbered section under 00_introduction/ with pre-created subsection files (1-1.tex ... 1-10.tex). The introduction is book-scale, not paper-scale.",
+    )
+    p_ns.add_argument("section_name", help="Section name (will be prefixed with the next number, e.g., 01_<name>)")
+    p_ns.set_defaults(fn=cmd_ns)
 
     p_b = sub.add_parser("b", help="Compile LaTeX papers to PDF with smart caching and dependency tracking",
                         description="""

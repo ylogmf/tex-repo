@@ -65,13 +65,26 @@ def is_paper_dir(path: Path) -> bool:
     return False
 
 
+def is_introduction_book(path: Path) -> bool:
+    """Check if path is the introduction book directory (00_introduction)."""
+    # Check if this is 00_introduction with an entry file
+    if path.name == "00_introduction":
+        entry_file = path / f"{path.name}.tex"
+        return entry_file.is_file()
+    return False
+
+
 def discover_papers(repo_root: Path) -> list[Path]:
-    """Find all paper directories by searching for entry tex files under repo root."""
+    """Find all paper directories and the introduction book by searching for entry tex files under repo root."""
     papers = []
     seen = set()
     for tex_file in repo_root.rglob("*.tex"):
         parent = tex_file.parent
-        if tex_file.name == f"{parent.name}.tex" or tex_file.name == "main.tex":
+        # Introduction book: 00_introduction/00_introduction.tex
+        if parent.name == "00_introduction" and tex_file.name == "00_introduction.tex":
+            seen.add(parent)
+        # Regular papers: folder_name/folder_name.tex or folder_name/main.tex
+        elif tex_file.name == f"{parent.name}.tex" or tex_file.name == "main.tex":
             seen.add(parent)
     return list(seen)
 
@@ -109,16 +122,22 @@ def sort_papers_by_stage_and_domain(papers: list[Path]) -> list[Path]:
 
 def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
     """Build a single paper with given arguments."""
-    entry = None
-    for candidate in entry_tex_candidates(paper_dir):
-        if candidate.exists():
-            entry = candidate
-            break
-    if entry is None:
-        die(
-            f"Not a paper directory (missing {paper_dir.name}.tex or main.tex): {paper_dir}\n"
-            f"Hint: Run 'tex-repo np <domain>/<paper-name>' to create a new paper"
-        )
+    # Handle introduction book (00_introduction)
+    if is_introduction_book(paper_dir):
+        entry = paper_dir / f"{paper_dir.name}.tex"
+    else:
+        # Regular paper: look for entry file
+        entry = None
+        for candidate in entry_tex_candidates(paper_dir):
+            if candidate.exists():
+                entry = candidate
+                break
+        if entry is None:
+            die(
+                f"Not a paper directory (missing {paper_dir.name}.tex or main.tex): {paper_dir}\n"
+                f"Hint: Run 'tex-repo np <domain>/<paper-name>' to create a new paper"
+            )
+    
     log_path = paper_dir / "build" / f"{entry.stem}.log"
     
     # Check if rebuild is needed (unless --clean or --force is specified)
@@ -206,6 +225,9 @@ def cmd_build(args) -> int:
         
         if is_paper_dir(current_dir):
             # Current directory is a paper directory - build it
+            paper_dir = current_dir
+        elif is_introduction_book(current_dir):
+            # Current directory is the introduction book - build it
             paper_dir = current_dir
         elif is_repo_root(current_dir):
             # Current directory is repo root - default to world spec

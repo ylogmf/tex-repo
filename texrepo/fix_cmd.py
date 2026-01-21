@@ -6,16 +6,18 @@ from typing import List, Tuple, Optional
 from .common import find_repo_root, die, write_text
 from .config import create_default_config
 from .meta_cmd import sync_identity_tex
+from .layouts import (
+    LAYOUTS,
+    DEFAULT_LAYOUT,
+    get_function_branches,
+    get_layout,
+    get_process_branches,
+    required_dirs,
+    stage_dir,
+    world_paths_for_layout,
+)
 from .rules import (
-    FOUNDATION_REL,
-    SPEC_REL,
     PAPERS_DIRNAME,
-    PROCESS_BRANCHES,
-    FUNCTION_BRANCHES,
-    WORLD_DIR,
-    FORMALISM_DIR,
-    PROCESS_REGIME_DIR,
-    FUNCTION_APPLICATION_DIR,
 )
 from .paper_cmd import build_generic_main_content, build_foundation_main_content
 
@@ -224,38 +226,54 @@ def check_and_create_file(path: Path, content: str, result: FixResult, dry_run: 
                 result.add_warning(str(path), f"cannot create ({e})")
 
 
-def fix_repository_structure(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
+def fix_repository_structure(repo_root: Path, result: FixResult, layout_name: str, dry_run: bool = False) -> None:
     """Fix repository folder structure."""
     print("Checking repository folder structure...")
     
     # Top-level stage folders
-    top_levels = [WORLD_DIR, FORMALISM_DIR, PROCESS_REGIME_DIR, FUNCTION_APPLICATION_DIR]
+    top_levels = required_dirs(layout_name)
     for stage in top_levels:
         check_and_create_directory(repo_root / stage, result, dry_run)
 
+    layout_def = LAYOUTS.get(layout_name, LAYOUTS[DEFAULT_LAYOUT])
+
     # Additional allowed folders
-    extra_folders = ["98_context", "99_legacy", "shared", "scripts", "releases"]
-    for folder in extra_folders:
+    for folder in layout_def.extras:
         check_and_create_directory(repo_root / folder, result, dry_run)
 
-    # World layer
-    check_and_create_directory(repo_root / FOUNDATION_REL, result, dry_run)
-    check_and_create_directory(repo_root / SPEC_REL, result, dry_run)
+    # World layer (old layout only)
+    world_paths = world_paths_for_layout(layout_name)
+    if world_paths:
+        foundation_rel, spec_rel = world_paths
+        check_and_create_directory(repo_root / foundation_rel, result, dry_run)
+        check_and_create_directory(repo_root / spec_rel, result, dry_run)
 
     # Paper parents
-    check_and_create_directory(repo_root / FORMALISM_DIR / PAPERS_DIRNAME, result, dry_run)
-    for branch in PROCESS_BRANCHES:
-        check_and_create_directory(repo_root / PROCESS_REGIME_DIR / branch / PAPERS_DIRNAME, result, dry_run)
-    for branch in FUNCTION_BRANCHES:
-        check_and_create_directory(repo_root / FUNCTION_APPLICATION_DIR / branch / PAPERS_DIRNAME, result, dry_run)
+    formalism_dir = stage_dir(layout_name, "formalism")
+    if formalism_dir:
+        check_and_create_directory(repo_root / formalism_dir / PAPERS_DIRNAME, result, dry_run)
+
+    process_dir = stage_dir(layout_name, "process_regime")
+    if process_dir:
+        for branch in get_process_branches(layout_name):
+            check_and_create_directory(repo_root / process_dir / branch / PAPERS_DIRNAME, result, dry_run)
+
+    function_dir = stage_dir(layout_name, "function_application")
+    if function_dir:
+        for branch in get_function_branches(layout_name):
+            check_and_create_directory(repo_root / function_dir / branch / PAPERS_DIRNAME, result, dry_run)
+
+    hypnosis_dir = stage_dir(layout_name, "hypnosis")
+    if hypnosis_dir:
+        check_and_create_directory(repo_root / hypnosis_dir / PAPERS_DIRNAME, result, dry_run)
 
 
-def fix_repository_files(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
+def fix_repository_files(repo_root: Path, result: FixResult, layout_name: str, dry_run: bool = False) -> None:
     """Fix repository configuration files."""
     print("Checking repository configuration files...")
     
     # .paperrepo (minimal placeholder)
-    paperrepo_content = "paperrepo=1\nversion=3\nlayout=staged\n"
+    paperrepo_content = f"paperrepo=1\nversion=3\nlayout={layout_name}\n"
     check_and_create_file(repo_root / ".paperrepo", paperrepo_content, result, dry_run)
     
     # .gitignore policy block
@@ -341,54 +359,87 @@ def fix_shared_files(repo_root: Path, result: FixResult, dry_run: bool = False) 
         result.add_skipped(str(shared_dir / "identity.tex"), "already exists")
 
 
-def fix_readmes(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
+def fix_readmes(repo_root: Path, result: FixResult, layout_name: str, dry_run: bool = False) -> None:
     """Ensure required README.md files exist without overwriting."""
     print("Checking required README files...")
 
-    ensure_readme(
-        repo_root / WORLD_DIR / "README.md",
-        "# World\n\nShared foundation and spec papers live here.\n",
-        result,
-        dry_run,
-    )
-    ensure_readme(
-        repo_root / FOUNDATION_REL / "README.md",
-        "# Foundation\n\nImmutable foundations that all other layers rely on.\n",
-        result,
-        dry_run,
-    )
-    ensure_readme(
-        repo_root / SPEC_REL / "README.md",
-        "# Spec\n\nThe primary specification paper for this repository.\n",
-        result,
-        dry_run,
-    )
+    world_paths = world_paths_for_layout(layout_name)
+    world_dir = stage_dir(layout_name, "world")
+    if world_dir and world_paths:
+        foundation_rel, spec_rel = world_paths
+        ensure_readme(
+            repo_root / world_dir / "README.md",
+            "# World\n\nShared foundation and spec papers live here.\n",
+            result,
+            dry_run,
+        )
+        ensure_readme(
+            repo_root / foundation_rel / "README.md",
+            "# Foundation\n\nImmutable foundations that all other layers rely on.\n",
+            result,
+            dry_run,
+        )
+        ensure_readme(
+            repo_root / spec_rel / "README.md",
+            "# Spec\n\nThe primary specification paper for this repository.\n",
+            result,
+            dry_run,
+        )
 
-    stage_readmes = {
-        FORMALISM_DIR: "# Formalism\n\nAdmissible forms, closures, and representations grounded in the world layer.\n",
-        PROCESS_REGIME_DIR: "# Process Regime\n\nNatural processes and governing regimes built on the formalism.\n",
-        FUNCTION_APPLICATION_DIR: "# Function Application\n\nFunctions and applications that depend on process/regime outputs.\n",
-    }
+    stage_readmes = {}
+
+    formalism_dir = stage_dir(layout_name, "formalism")
+    if formalism_dir:
+        stage_readmes[formalism_dir] = (
+            "# Formalism\n\nAdmissible forms, closures, and representations grounded in the world layer.\n"
+        )
+
+    intro_dir = stage_dir(layout_name, "introduction")
+    if intro_dir:
+        stage_readmes[intro_dir] = "# Introduction\n\nBook-scale introduction with numbered sections. Use 'tex-repo ns <section-name>' to create sections.\n"
+
+    process_dir = stage_dir(layout_name, "process_regime")
+    if process_dir:
+        stage_readmes[process_dir] = "# Process Regime\n\nNatural processes and governing regimes built on the formalism.\n"
+
+    function_dir = stage_dir(layout_name, "function_application")
+    if function_dir:
+        stage_readmes[function_dir] = (
+            "# Function Application\n\nFunctions and applications that depend on process/regime outputs.\n"
+        )
+
+    hypnosis_dir = stage_dir(layout_name, "hypnosis")
+    if hypnosis_dir:
+        stage_readmes[hypnosis_dir] = "# Hypnosis\n\nHypnosis research and downstream analyses live here.\n"
 
     for stage, content in stage_readmes.items():
         ensure_readme(repo_root / stage / "README.md", content, result, dry_run)
 
-    branch_readmes = {
-        repo_root / PROCESS_REGIME_DIR / "process" / "README.md": "# Process\n\nProcess-focused subjects belong here.\n",
-        repo_root / PROCESS_REGIME_DIR / "regime" / "README.md": "# Regime\n\nRegime-focused subjects belong here.\n",
-        repo_root / FUNCTION_APPLICATION_DIR / "function" / "README.md": "# Function\n\nFunction-focused subjects belong here.\n",
-        repo_root / FUNCTION_APPLICATION_DIR / "application" / "README.md": "# Application\n\nApplication-focused subjects belong here.\n",
-    }
+    branch_readmes = {}
+    if process_dir:
+        for branch in get_process_branches(layout_name):
+            label = branch.capitalize()
+            branch_readmes[repo_root / process_dir / branch / "README.md"] = f"# {label}\n\n{label}-focused subjects belong here.\n"
+    if function_dir:
+        for branch in get_function_branches(layout_name):
+            label = branch.capitalize()
+            branch_readmes[repo_root / function_dir / branch / "README.md"] = (
+                f"# {label}\n\n{label}-focused subjects belong here.\n"
+            )
     for path, content in branch_readmes.items():
         ensure_readme(path, content, result, dry_run)
 
-    paper_parents = [
-        repo_root / FORMALISM_DIR / PAPERS_DIRNAME,
-        repo_root / PROCESS_REGIME_DIR / "process" / PAPERS_DIRNAME,
-        repo_root / PROCESS_REGIME_DIR / "regime" / PAPERS_DIRNAME,
-        repo_root / FUNCTION_APPLICATION_DIR / "function" / PAPERS_DIRNAME,
-        repo_root / FUNCTION_APPLICATION_DIR / "application" / PAPERS_DIRNAME,
-    ]
+    paper_parents = []
+    if formalism_dir:
+        paper_parents.append(repo_root / formalism_dir / PAPERS_DIRNAME)
+    if process_dir:
+        for branch in get_process_branches(layout_name):
+            paper_parents.append(repo_root / process_dir / branch / PAPERS_DIRNAME)
+    if function_dir:
+        for branch in get_function_branches(layout_name):
+            paper_parents.append(repo_root / function_dir / branch / PAPERS_DIRNAME)
+    if hypnosis_dir:
+        paper_parents.append(repo_root / hypnosis_dir / PAPERS_DIRNAME)
     for parent in paper_parents:
         if not parent.exists():
             continue
@@ -403,12 +454,14 @@ def fix_readmes(repo_root: Path, result: FixResult, dry_run: bool = False) -> No
                     dry_run,
                 )
 
-def fix_world_papers(repo_root: Path, result: FixResult, dry_run: bool = False) -> None:
+def fix_world_papers(
+    repo_root: Path, result: FixResult, foundation_rel: Path, spec_rel: Path, dry_run: bool = False
+) -> None:
     """Fix world-layer paper skeletons."""
     print("Checking world paper skeletons...")
 
-    foundation_dir = repo_root / FOUNDATION_REL
-    spec_dir = repo_root / SPEC_REL
+    foundation_dir = repo_root / foundation_rel
+    spec_dir = repo_root / spec_rel
 
     for path in [
         foundation_dir,
@@ -455,6 +508,37 @@ def fix_world_papers(repo_root: Path, result: FixResult, dry_run: bool = False) 
         check_and_create_file(spec_dir / "sections" / f"section_{i}.tex", section_content, result, dry_run)
 
 
+def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dry_run: bool = False) -> None:
+    """Fix introduction book structure (entry file and sections/ directory)."""
+    print("Checking introduction book structure...")
+    
+    intro_path = repo_root / intro_dir
+    
+    # Create sections/ directory
+    check_and_create_directory(intro_path / "sections", result, dry_run)
+    
+    # Create entry .tex file
+    intro_entry = intro_path / f"{intro_dir}.tex"
+    intro_tex_content = r"""\documentclass[11pt]{article}
+\input{../shared/preamble}
+\input{../shared/macros}
+\input{../shared/notation}
+\input{../shared/identity}
+
+\title{Introduction}
+\date{}
+
+\begin{document}
+\maketitle
+
+% Section files will be created under sections/ using the ns command
+% Example: \input{sections/01_section_name/1-1.tex}
+
+\end{document}
+"""
+    check_and_create_file(intro_entry, intro_tex_content, result, dry_run)
+
+
 def print_fix_results(result: FixResult, dry_run: bool = False) -> None:
     """Print fix results with clear formatting."""
     print()
@@ -495,14 +579,21 @@ def cmd_fix(args) -> int:
         print()
     
     result = FixResult()
+    layout_name = get_layout(repo_root)
     
     try:
         # Check and fix various components
-        fix_repository_structure(repo_root, result, dry_run)
-        fix_repository_files(repo_root, result, dry_run)
+        fix_repository_structure(repo_root, result, layout_name, dry_run)
+        fix_repository_files(repo_root, result, layout_name, dry_run)
         fix_shared_files(repo_root, result, dry_run)
-        fix_world_papers(repo_root, result, dry_run)
-        fix_readmes(repo_root, result, dry_run)
+        world_paths = world_paths_for_layout(layout_name)
+        if world_paths:
+            foundation_rel, spec_rel = world_paths
+            fix_world_papers(repo_root, result, foundation_rel, spec_rel, dry_run)
+        intro_dir = stage_dir(layout_name, "introduction")
+        if intro_dir and (repo_root / intro_dir).exists():
+            fix_introduction_book(repo_root, result, intro_dir, dry_run)
+        fix_readmes(repo_root, result, layout_name, dry_run)
         
         # Print results
         print_fix_results(result, dry_run)

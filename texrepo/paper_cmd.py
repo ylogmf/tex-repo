@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .common import find_repo_root, die, normalize_rel_path, write_text, relpath_to_shared
+from .layouts import get_layout
 from .rules import (
     entry_tex_candidates,
     entry_tex_path,
@@ -195,7 +196,8 @@ def cmd_np(args) -> int:
     repo = find_repo_root()
 
     requested_rel, inferred_title = parse_np_args(args.path_or_domain, args.maybe_slug, args.title)
-    paper_rel = resolve_paper_path(requested_rel)
+    layout_name = get_layout(repo)
+    paper_rel = resolve_paper_path(requested_rel, layout_name)
 
     paper_dir = (repo / paper_rel).resolve()
     paper_dir.mkdir(parents=True, exist_ok=True)

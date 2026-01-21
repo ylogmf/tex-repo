@@ -3,18 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from .common import write_text
-from .rules import (
-    STAGE_PIPELINE,
-    FOUNDATION_REL,
-    SPEC_REL,
-    PAPERS_DIRNAME,
-    PROCESS_BRANCHES,
-    FUNCTION_BRANCHES,
-    WORLD_DIR,
-    FORMALISM_DIR,
-    PROCESS_REGIME_DIR,
-    FUNCTION_APPLICATION_DIR,
+from .layouts import (
+    DEFAULT_LAYOUT,
+    LAYOUTS,
+    get_function_branches,
+    get_process_branches,
+    required_dirs,
+    stage_dir,
+    world_paths_for_layout,
 )
+from .rules import PAPERS_DIRNAME
 from .meta_cmd import (
     escape_latex_string,
     prompt_for_metadata,
@@ -132,20 +130,20 @@ def _write_readme_if_missing(path: Path, content: str) -> None:
 def cmd_init(args) -> int:
     source_text_path = None
     text_content = None
+    layout_name = getattr(args, "layout", DEFAULT_LAYOUT)
+    if layout_name not in LAYOUTS:
+        print(f"Error: Unknown layout '{layout_name}'. Choose from: {', '.join(LAYOUTS)}")
+        return 1
 
     # Determine repo name and optional text seed
-    if getattr(args, "source_text", None):
-        source_text_path = Path(args.source_text)
-        repo_name = args.target
-    elif str(args.target).lower().endswith(".txt"):
-        source_text_path = Path(args.target)
-        repo_name = Path(args.target).stem
-    else:
-        repo_name = args.target
-
-    if source_text_path and source_text_path.suffix.lower() != ".txt":
-        print("Error: Source document must be a .txt file")
-        return 1
+    legacy_seed = getattr(args, "legacy_seed_text", None)
+    if legacy_seed:
+        source_text_path = Path(legacy_seed)
+        if source_text_path.suffix.lower() != ".txt":
+            print("Error: --legacy-seed-text must be a .txt file")
+            return 1
+    
+    repo_name = args.target
 
     repo = Path(repo_name).expanduser().resolve()
     
@@ -184,7 +182,7 @@ def cmd_init(args) -> int:
     # Create .paperrepo with basic repo info
     write_text(
         repo / ".paperrepo",
-        "paperrepo=1\nversion=3\nlayout=staged\n",
+        f"paperrepo=1\nversion=3\nlayout={layout_name}\n",
     )
     
     # Add metadata to .paperrepo
@@ -195,30 +193,44 @@ def cmd_init(args) -> int:
     write_text(gitignore_path, _gitignore_policy_block())
 
     # staged directories
-    (repo / WORLD_DIR).mkdir(parents=True, exist_ok=True)
-    (repo / FORMALISM_DIR).mkdir(parents=True, exist_ok=True)
-    (repo / PROCESS_REGIME_DIR).mkdir(parents=True, exist_ok=True)
-    (repo / FUNCTION_APPLICATION_DIR).mkdir(parents=True, exist_ok=True)
+    for stage in required_dirs(layout_name):
+        (repo / stage).mkdir(parents=True, exist_ok=True)
 
     # shared + misc
-    (repo / "shared").mkdir(parents=True, exist_ok=True)
-    (repo / "scripts").mkdir(parents=True, exist_ok=True)
-    (repo / "98_context").mkdir(parents=True, exist_ok=True)
-    (repo / "99_legacy").mkdir(parents=True, exist_ok=True)
-    (repo / "releases").mkdir(parents=True, exist_ok=True)
+    for extra in LAYOUTS[layout_name].extras:
+        (repo / extra).mkdir(parents=True, exist_ok=True)
 
     # world layer
-    foundation_dir = repo / FOUNDATION_REL
-    spec_dir = repo / SPEC_REL
-    foundation_dir.mkdir(parents=True, exist_ok=True)
-    spec_dir.mkdir(parents=True, exist_ok=True)
+    world_paths = world_paths_for_layout(layout_name)
+    foundation_dir = None
+    spec_dir = None
+    if world_paths:
+        foundation_rel, spec_rel = world_paths
+        foundation_dir = repo / foundation_rel
+        spec_dir = repo / spec_rel
+        foundation_dir.mkdir(parents=True, exist_ok=True)
+        spec_dir.mkdir(parents=True, exist_ok=True)
 
     # paper locations
-    (repo / FORMALISM_DIR / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
-    for branch in PROCESS_BRANCHES:
-        (repo / PROCESS_REGIME_DIR / branch / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
-    for branch in FUNCTION_BRANCHES:
-        (repo / FUNCTION_APPLICATION_DIR / branch / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
+    formalism_dir = stage_dir(layout_name, "formalism")
+    if formalism_dir:
+        (repo / formalism_dir / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
+
+    intro_dir = stage_dir(layout_name, "introduction")
+
+    process_dir = stage_dir(layout_name, "process_regime")
+    if process_dir:
+        for branch in get_process_branches(layout_name):
+            (repo / process_dir / branch / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
+
+    function_dir = stage_dir(layout_name, "function_application")
+    if function_dir:
+        for branch in get_function_branches(layout_name):
+            (repo / function_dir / branch / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
+
+    hypnosis_dir = stage_dir(layout_name, "hypnosis")
+    if hypnosis_dir:
+        (repo / hypnosis_dir / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
 
     # Generate identity.tex from metadata
     sync_identity_tex(repo)
@@ -234,7 +246,7 @@ def cmd_init(args) -> int:
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage[hidelinks]{hyperref}
-\usepackage{nameinlink,noabbrev]{cleveref}
+\usepackage[nameinlink,noabbrev]{cleveref}
 \usepackage[numbers]{natbib}
 
 \setlength{\parindent}{0pt}
@@ -271,55 +283,97 @@ def cmd_init(args) -> int:
 """,
     )
 
-    # Seed world papers
-    write_foundation_paper(repo, foundation_dir, "Foundation")
-    write_spec_paper(repo, spec_dir, "Spec")
+    # Seed world papers when applicable
+    if foundation_dir and spec_dir:
+        write_foundation_paper(repo, foundation_dir, "Foundation")
+        write_spec_paper(repo, spec_dir, "Spec")
 
-    if text_content is not None:
-        section_path = spec_dir / "sections" / "section_1.tex"
-        safe_text = escape_latex_string(text_content)
-        if not safe_text.endswith("\n"):
-            safe_text += "\n"
-        write_text(section_path, f"\\section{{Section 1}}\n\n{safe_text}")
+        if text_content is not None:
+            section_path = spec_dir / "sections" / "section_1.tex"
+            safe_text = escape_latex_string(text_content)
+            if not safe_text.endswith("\n"):
+                safe_text += "\n"
+            write_text(section_path, f"\\section{{Section 1}}\n\n{safe_text}")
+    elif text_content is not None:
+        print("⚠️  Source text provided but layout has no spec target; seed was ignored.")
 
     # Seed required READMEs without overwriting existing content
-    _write_readme_if_missing(
-        repo / WORLD_DIR / "README.md",
-        "# World\n\nShared foundation and spec papers live here.\n",
-    )
-    _write_readme_if_missing(
-        foundation_dir / "README.md",
-        "# Foundation\n\nImmutable foundations that all other layers rely on.\n",
-    )
-    _write_readme_if_missing(
-        spec_dir / "README.md",
-        "# Spec\n\nThe primary specification paper for this repository.\n",
-    )
-    stage_readmes = {
-        FORMALISM_DIR: "# Formalism\n\nAdmissible forms, closures, and representations grounded in the world layer.\n",
-        PROCESS_REGIME_DIR: "# Process Regime\n\nNatural processes and governing regimes built on the formalism.\n",
-        FUNCTION_APPLICATION_DIR: "# Function Application\n\nFunctions and applications that depend on process/regime outputs.\n",
-    }
-    for stage in STAGE_PIPELINE[1:]:
-        _write_readme_if_missing(repo / stage / "README.md", stage_readmes.get(stage, ""))
+    world_dir = stage_dir(layout_name, "world")
+    if world_dir and foundation_dir and spec_dir:
+        _write_readme_if_missing(
+            repo / world_dir / "README.md",
+            "# World\n\nShared foundation and spec papers live here.\n",
+        )
+        _write_readme_if_missing(
+            foundation_dir / "README.md",
+            "# Foundation\n\nImmutable foundations that all other layers rely on.\n",
+        )
+        _write_readme_if_missing(
+            spec_dir / "README.md",
+            "# Spec\n\nThe primary specification paper for this repository.\n",
+        )
+
+    # Create book structure for introduction (new layout)
+    if intro_dir:
+        intro_path = repo / intro_dir
+        # Create sections/ directory
+        (intro_path / "sections").mkdir(parents=True, exist_ok=True)
+        # Create entry file for buildable book
+        intro_entry = intro_path / f"{intro_dir}.tex"
+        if not intro_entry.exists():
+            intro_tex_content = r"""\documentclass[11pt]{article}
+\input{../shared/preamble}
+\input{../shared/macros}
+\input{../shared/notation}
+\input{../shared/identity}
+
+\title{Introduction}
+\date{}
+
+\begin{document}
+\maketitle
+
+% Section files will be created under sections/ using the ns command
+% Example: \input{sections/01_section_name/1-1.tex}
+
+\end{document}
+"""
+            write_text(intro_entry, intro_tex_content)
+
+    stage_readmes = {}
+    if formalism_dir:
+        stage_readmes[formalism_dir] = (
+            "# Formalism\n\nAdmissible forms, closures, and representations grounded in the world layer.\n"
+        )
+    if intro_dir:
+        stage_readmes[intro_dir] = "# Introduction\n\nBook-scale introduction with numbered sections. Use 'tex-repo ns <section-name>' to create sections.\n"
+    if process_dir:
+        stage_readmes[process_dir] = "# Process Regime\n\nNatural processes and governing regimes built on the formalism.\n"
+    if function_dir:
+        stage_readmes[function_dir] = (
+            "# Function Application\n\nFunctions and applications that depend on process/regime outputs.\n"
+        )
+    if hypnosis_dir:
+        stage_readmes[hypnosis_dir] = "# Hypnosis\n\nHypnosis research and downstream analyses live here.\n"
+
+    for stage, content in stage_readmes.items():
+        _write_readme_if_missing(repo / stage / "README.md", content)
 
     # Subdomain READMEs
-    _write_readme_if_missing(
-        repo / PROCESS_REGIME_DIR / "process" / "README.md",
-        "# Process\n\nProcess-focused subjects belong here.\n",
-    )
-    _write_readme_if_missing(
-        repo / PROCESS_REGIME_DIR / "regime" / "README.md",
-        "# Regime\n\nRegime-focused subjects belong here.\n",
-    )
-    _write_readme_if_missing(
-        repo / FUNCTION_APPLICATION_DIR / "function" / "README.md",
-        "# Function\n\nFunction-focused subjects belong here.\n",
-    )
-    _write_readme_if_missing(
-        repo / FUNCTION_APPLICATION_DIR / "application" / "README.md",
-        "# Application\n\nApplication-focused subjects belong here.\n",
-    )
+    if process_dir:
+        for branch in get_process_branches(layout_name):
+            label = branch.capitalize()
+            _write_readme_if_missing(
+                repo / process_dir / branch / "README.md",
+                f"# {label}\n\n{label}-focused subjects belong here.\n",
+            )
+    if function_dir:
+        for branch in get_function_branches(layout_name):
+            label = branch.capitalize()
+            _write_readme_if_missing(
+                repo / function_dir / branch / "README.md",
+                f"# {label}\n\n{label}-focused subjects belong here.\n",
+            )
 
     print(f"✅ Initialized repo: {repo}")
     return 0
