@@ -20,6 +20,7 @@ from .rules import (
     PAPERS_DIRNAME,
 )
 from .paper_cmd import build_generic_main_content, build_foundation_main_content
+from .init_cmd import INTRO_ENTRY_TEMPLATE, INTRO_FRONTMATTER, INTRO_BACKMATTER
 
 POLICY_START = "# >>> tex-repo policy"
 POLICY_END = "# <<< tex-repo policy"
@@ -509,34 +510,81 @@ def fix_world_papers(
 
 
 def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dry_run: bool = False) -> None:
-    """Fix introduction book structure (entry file and sections/ directory)."""
+    """Fix introduction book structure (entry file, front/back matter, and sections/ directory)."""
     print("Checking introduction book structure...")
     
     intro_path = repo_root / intro_dir
     
-    # Create sections/ directory
-    check_and_create_directory(intro_path / "sections", result, dry_run)
+    # Check if old structure exists (sections/, frontmatter/, backmatter/ at top level)
+    old_structure_exists = (
+        (intro_path / "sections").exists() or 
+        (intro_path / "frontmatter").exists() or 
+        (intro_path / "backmatter").exists()
+    )
     
+    # If old structure exists, warn but don't migrate (backward compat)
+    if old_structure_exists:
+        result.add_warning(
+            str(intro_path),
+            "Using legacy structure (sections/, frontmatter/ at top level). New repos use parts/ container."
+        )
+        # Still fix old structure
+        for d in ["sections", "frontmatter", "backmatter", "build"]:
+            check_and_create_directory(intro_path / d, result, dry_run)
+        
+        # Frontmatter/backmatter files in old location
+        for name, content in INTRO_FRONTMATTER.items():
+            check_and_create_file(intro_path / "frontmatter" / name, content, result, dry_run)
+        for name, content in INTRO_BACKMATTER.items():
+            check_and_create_file(intro_path / "backmatter" / name, content, result, dry_run)
+    else:
+        # Create new parts/ structure
+        parts_dir = intro_path / "parts"
+        for d in ["frontmatter", "sections", "backmatter", "appendix"]:
+            check_and_create_directory(parts_dir / d, result, dry_run)
+        check_and_create_directory(intro_path / "build", result, dry_run)
+        
+        # Frontmatter/backmatter files in new location
+        for name, content in INTRO_FRONTMATTER.items():
+            check_and_create_file(parts_dir / "frontmatter" / name, content, result, dry_run)
+        for name, content in INTRO_BACKMATTER.items():
+            check_and_create_file(parts_dir / "backmatter" / name, content, result, dry_run)
+
     # Create entry .tex file
     intro_entry = intro_path / f"{intro_dir}.tex"
-    intro_tex_content = r"""\documentclass[11pt]{article}
-\input{../shared/preamble}
-\input{../shared/macros}
-\input{../shared/notation}
-\input{../shared/identity}
+    check_and_create_file(intro_entry, INTRO_ENTRY_TEMPLATE, result, dry_run)
 
-\title{Introduction}
-\date{}
-
-\begin{document}
-\maketitle
-
-% Section files will be created under sections/ using the ns command
-% Example: \input{sections/01_section_name/1-1.tex}
-
-\end{document}
-"""
-    check_and_create_file(intro_entry, intro_tex_content, result, dry_run)
+    # Backfill chapter scaffolds without overwriting content
+    # Check both new and old locations
+    parts_sections_root = intro_path / "parts" / "sections"
+    old_sections_root = intro_path / "sections"
+    
+    sections_root = parts_sections_root if parts_sections_root.exists() else old_sections_root
+    sections_prefix = "parts/sections" if parts_sections_root.exists() else "sections"
+    
+    if sections_root.exists():
+        for item in sections_root.iterdir():
+            if not item.is_dir():
+                continue
+            name = item.name
+            if len(name) < 3 or not name[:2].isdigit() or name[2] != "_":
+                continue
+            section_num = int(name[:2])
+            chapter_path = item / "chapter.tex"
+            rel_base = f"{sections_prefix}/{name}"
+            if not chapter_path.exists():
+                include_lines = [f"\\section*{{Chapter {section_num}: {name[3:].replace('_', ' ')}}}", ""]
+                for i in range(1, 11):
+                    include_lines.append(f"\\input{{{rel_base}/{section_num}-{i}.tex}}")
+                include_lines.append("")
+                check_and_create_file(chapter_path, "\n".join(include_lines), result, dry_run)
+            for i in range(1, 11):
+                check_and_create_file(
+                    item / f"{section_num}-{i}.tex",
+                    f"% Section {section_num}, subsection {i}\n",
+                    result,
+                    dry_run,
+                )
 
 
 def print_fix_results(result: FixResult, dry_run: bool = False) -> None:

@@ -64,7 +64,9 @@ class TestCommandMatrix:
         # Verify new layout structure
         assert (repo_path / "00_introduction").is_dir()
         assert (repo_path / "00_introduction" / "00_introduction.tex").exists()
-        assert (repo_path / "00_introduction" / "sections").is_dir()
+        assert (repo_path / "00_introduction" / "parts" / "sections").is_dir()
+        assert (repo_path / "00_introduction" / "parts" / "frontmatter").is_dir()
+        assert (repo_path / "00_introduction" / "parts" / "appendix").is_dir()
         assert (repo_path / "00_introduction" / "README.md").exists()
         assert not (repo_path / "00_introduction" / "papers").exists()
         assert (repo_path / "01_process_regime").is_dir()
@@ -104,7 +106,7 @@ class TestCommandMatrix:
         # D) ns - create introduction section
         result = run_texrepo(["ns", "foundations"], cwd=repo_path)
         assert result.returncode == 0, f"ns failed: {result.stderr}"
-        section_dir = repo_path / "00_introduction" / "sections" / "01_foundations"
+        section_dir = repo_path / "00_introduction" / "parts" / "sections" / "01_foundations"
         assert section_dir.is_dir()
         for i in range(1, 11):
             assert (section_dir / f"1-{i}.tex").exists()
@@ -112,7 +114,7 @@ class TestCommandMatrix:
         # D) ns - create second section
         result = run_texrepo(["ns", "applications"], cwd=repo_path)
         assert result.returncode == 0
-        section_dir2 = repo_path / "00_introduction" / "sections" / "02_applications"
+        section_dir2 = repo_path / "00_introduction" / "parts" / "sections" / "02_applications"
         assert section_dir2.is_dir()
         for i in range(1, 11):
             assert (section_dir2 / f"2-{i}.tex").exists()
@@ -231,10 +233,10 @@ class TestStatusValidation:
             check=True,
         )
         
-        # Remove sections directory
+        # Remove parts directory
         import shutil
-        sections_dir = repo_path / "00_introduction" / "sections"
-        shutil.rmtree(sections_dir)
+        parts_dir = repo_path / "00_introduction" / "parts"
+        shutil.rmtree(parts_dir)
         
         result = run_texrepo(["status"], cwd=repo_path)
         assert result.returncode != 0, "status should fail without sections/"
@@ -310,8 +312,8 @@ class TestFixCommand:
         entry_file.unlink()
         
         import shutil
-        sections_dir = repo_path / "00_introduction" / "sections"
-        shutil.rmtree(sections_dir, ignore_errors=True)
+        parts_dir = repo_path / "00_introduction" / "parts"
+        shutil.rmtree(parts_dir, ignore_errors=True)
         
         # Run fix
         result = run_texrepo(["fix"], cwd=repo_path)
@@ -319,7 +321,7 @@ class TestFixCommand:
         
         # Verify restoration
         assert entry_file.exists()
-        assert sections_dir.is_dir()
+        assert parts_dir.is_dir()
 
 
 class TestNsCommand:
@@ -340,7 +342,7 @@ class TestNsCommand:
         result = run_texrepo(["ns", "basics"], cwd=repo_path)
         assert result.returncode == 0, f"ns failed: {result.stderr}"
         
-        section_dir = repo_path / "00_introduction" / "sections" / "01_basics"
+        section_dir = repo_path / "00_introduction" / "parts" / "sections" / "01_basics"
         assert section_dir.is_dir()
         for i in range(1, 11):
             subsection = section_dir / f"1-{i}.tex"
@@ -350,7 +352,7 @@ class TestNsCommand:
         result = run_texrepo(["ns", "advanced"], cwd=repo_path)
         assert result.returncode == 0
         
-        section_dir2 = repo_path / "00_introduction" / "sections" / "02_advanced"
+        section_dir2 = repo_path / "00_introduction" / "parts" / "sections" / "02_advanced"
         assert section_dir2.is_dir()
         for i in range(1, 11):
             subsection = section_dir2 / f"2-{i}.tex"
@@ -375,8 +377,8 @@ class TestNsCommand:
         # It actually succeeds with a different number, not a refusal
         assert result.returncode == 0
         # Both should exist with different numbers
-        assert (repo_path / "00_introduction" / "sections" / "01_test").exists()
-        assert (repo_path / "00_introduction" / "sections" / "02_test").exists()
+        assert (repo_path / "00_introduction" / "parts" / "sections" / "01_test").exists()
+        assert (repo_path / "00_introduction" / "parts" / "sections" / "02_test").exists()
 
 
 class TestNdCommand:
@@ -548,18 +550,16 @@ class TestBuildCommand:
         
         index_content = index_file.read_text()
         
-        # Check that both sections are included in order
-        assert r"\section{foundations}" in index_content
-        assert r"\section{applications}" in index_content
-        
-        # Check section order
-        foundations_pos = index_content.find(r"\section{foundations}")
-        applications_pos = index_content.find(r"\section{applications}")
+        # Check that both sections are included in order (now formatted as title case)
+        assert r"\section{Foundations}" in index_content
+        assert r"\section{Applications}" in index_content
+        foundations_pos = index_content.find(r"\section{Foundations}")
+        applications_pos = index_content.find(r"\section{Applications}")
         assert foundations_pos < applications_pos, "Sections should be in numeric order"
         
-        # Check that subsection files are included
-        assert r"\input{sections/01_foundations/1-1.tex}" in index_content
-        assert r"\input{sections/02_applications/2-1.tex}" in index_content
+        # Check that subsection files are included with parts/ prefix
+        assert r"\input{parts/sections/01_foundations/1-1.tex}" in index_content
+        assert r"\input{parts/sections/02_applications/2-1.tex}" in index_content
         
         # Verify PDF was created
         pdf_path = repo_path / "00_introduction" / "build" / "00_introduction.pdf"

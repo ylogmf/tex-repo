@@ -127,6 +127,79 @@ def _write_readme_if_missing(path: Path, content: str) -> None:
     write_text(path, content)
 
 
+INTRO_ENTRY_TEMPLATE = r"""\documentclass[11pt]{article}
+\input{../shared/preamble}
+\input{../shared/macros}
+\input{../shared/notation}
+\input{../shared/identity}
+
+\title{Introduction}
+\date{}
+
+\begin{document}
+\maketitle
+
+\input{build/sections_index.tex}
+
+\end{document}
+"""
+
+INTRO_FRONTMATTER = {
+    "title.tex": r"""\begin{titlepage}
+\centering
+
+{\LARGE Book-Scale Introduction}\\[1.5em]
+{\large Structural orientation for staged tex-repo work}\\[2.0em]
+
+\textit{Navigation-only front matter; substantive content begins in chapters.}
+
+\vfill
+
+\end{titlepage}
+""",
+    "preface.tex": r"""\section*{Preface}
+
+This preface sets the reader contract for the introduction. It explains why the material is ordered, how navigation works, and what will not be provided here.
+
+\begin{itemize}
+\item \textbf{Purpose}: provide a book-scale map and orientation, not a paper-scale argument or proofs.
+\item \textbf{Audience stance}: assume readers are new to this repository’s staging and need a stable entry point.
+\item \textbf{Non-goals}: no claims, results, or conclusions are presented in this front matter; it only frames how to use the chapters that follow.
+\end{itemize}
+""",
+    "how_to_read.tex": r"""\section*{How to Read This Book}
+
+This introduction is organized as training sequence rather than a single extended paper.
+
+\begin{itemize}
+\item \textbf{Progressive spine}: chapters are arranged so later material depends on constraints set earlier; read in order.
+\item \textbf{Partial definitions}: early chapters may leave terms intentionally partial so that later chapters can refine or restrict them.
+\item \textbf{Recognition goals}: each chapter names what readers should be able to recognize when finishing it and what it avoids claiming.
+\item \textbf{Separation of roles}: structure lives in this entry file and front matter; substantive content stays inside chapter subsections.
+\end{itemize}
+""",
+    "toc.tex": r"""\clearpage
+\tableofcontents
+\clearpage
+""",
+}
+
+INTRO_BACKMATTER = {
+    "scope_limits.tex": r"""\section*{Scope Limits}
+
+\begin{itemize}
+\item This book-scale introduction is limited to framing, navigation, and learning objectives; it does not assert theoretical results.
+\item Items that require proofs, data, or full formalism are deferred to stage-specific papers and are outside the admissible scope here.
+\item Chapters may reference constraints established earlier but do not extend them beyond what is stated in those chapters.
+\end{itemize}
+""",
+    "closing_notes.tex": r"""\section*{Closing Notes}
+
+This back matter closes the scope without adding conclusions. It reiterates that open questions, unresolved definitions, and any claims requiring validation are intentionally left to later stages. Readers should treat this book as a map and onboarding spine rather than a terminal argument.
+""",
+}
+
+
 def cmd_init(args) -> int:
     source_text_path = None
     text_content = None
@@ -316,30 +389,30 @@ def cmd_init(args) -> int:
     # Create book structure for introduction (new layout)
     if intro_dir:
         intro_path = repo / intro_dir
-        # Create sections/ directory
-        (intro_path / "sections").mkdir(parents=True, exist_ok=True)
-        # Create entry file for buildable book
+        # Create parts/ container structure
+        parts_dir = intro_path / "parts"
+        (parts_dir / "sections").mkdir(parents=True, exist_ok=True)
+        (parts_dir / "frontmatter").mkdir(parents=True, exist_ok=True)
+        (parts_dir / "backmatter").mkdir(parents=True, exist_ok=True)
+        (parts_dir / "appendix").mkdir(parents=True, exist_ok=True)
+        (intro_path / "build").mkdir(parents=True, exist_ok=True)
+
+        # Frontmatter files
+        for name, content in INTRO_FRONTMATTER.items():
+            target = parts_dir / "frontmatter" / name
+            if not target.exists():
+                write_text(target, content)
+
+        # Backmatter files
+        for name, content in INTRO_BACKMATTER.items():
+            target = parts_dir / "backmatter" / name
+            if not target.exists():
+                write_text(target, content)
+
+        # Entry file for buildable book
         intro_entry = intro_path / f"{intro_dir}.tex"
         if not intro_entry.exists():
-            intro_tex_content = r"""\documentclass[11pt]{article}
-\input{../shared/preamble}
-\input{../shared/macros}
-\input{../shared/notation}
-\input{../shared/identity}
-
-\title{Introduction}
-\date{}
-
-\begin{document}
-\maketitle
-
-% Sections are automatically included from build/sections_index.tex
-% This file is regenerated on each build based on sections/ folder contents
-\input{build/sections_index.tex}
-
-\end{document}
-"""
-            write_text(intro_entry, intro_tex_content)
+            write_text(intro_entry, INTRO_ENTRY_TEMPLATE)
 
     stage_readmes = {}
     if formalism_dir:

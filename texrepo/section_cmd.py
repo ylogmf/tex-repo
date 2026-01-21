@@ -18,8 +18,18 @@ def cmd_ns(args) -> int:
     if not intro_root.exists():
         die(f"Introduction directory does not exist: {intro_dir}")
 
-    # Sections must live under sections/ subdirectory
-    sections_root = intro_root / "sections"
+    # Prefer new parts/sections/ structure, fall back to old sections/ for backward compat
+    parts_sections_root = intro_root / "parts" / "sections"
+    old_sections_root = intro_root / "sections"
+    
+    # Determine which path to use (prefer parts/ if it exists)
+    if (intro_root / "parts").exists():
+        sections_root = parts_sections_root
+        sections_prefix = "parts/sections"
+    else:
+        sections_root = old_sections_root
+        sections_prefix = "sections"
+    
     sections_root.mkdir(parents=True, exist_ok=True)
 
     prefix = next_prefix(sections_root)
@@ -31,6 +41,17 @@ def cmd_ns(args) -> int:
 
     section_path.mkdir(parents=True, exist_ok=True)
     section_num = int(prefix)
+
+    # Create chapter file that includes subsections in order
+    chapter_path = section_path / "chapter.tex"
+    rel_base = f"{sections_prefix}/{prefix}_{args.section_name}"
+    if not chapter_path.exists():
+        include_lines = [f"\\section*{{Chapter {section_num}: {args.section_name.replace('_', ' ')}}}", ""]
+        for i in range(1, 11):
+            include_lines.append(f"\\input{{{rel_base}/{section_num}-{i}.tex}}")
+        include_lines.append("")
+        write_text(chapter_path, "\n".join(include_lines))
+
     for i in range(1, 11):
         subsection = section_path / f"{section_num}-{i}.tex"
         if not subsection.exists():

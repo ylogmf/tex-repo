@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 import pytest
 
-from texrepo.introduction_index import generate_introduction_index
+from texrepo.introduction_index import generate_introduction_index, generate_chapters_index
 
 
 class TestIntroductionIndex:
@@ -56,10 +56,10 @@ class TestIntroductionIndex:
         assert output.exists()
         content = output.read_text()
         
-        # Check section header
-        assert r"\section{framing}" in content
+        # Check section header (now formatted as title case)
+        assert r"\section{Framing}" in content
         
-        # Check all subsection includes
+        # Check subsection includes
         for i in range(1, 11):
             assert f"\\input{{sections/01_framing/1-{i}.tex}}" in content
     
@@ -84,10 +84,10 @@ class TestIntroductionIndex:
         assert output.exists()
         content = output.read_text()
         
-        # Check sections appear in order
-        first_pos = content.find(r"\section{first}")
-        second_pos = content.find(r"\section{second}")
-        third_pos = content.find(r"\section{third}")
+        # Check sections appear in order (now formatted as title case)
+        first_pos = content.find(r"\section{First}")
+        second_pos = content.find(r"\section{Second}")
+        third_pos = content.find(r"\section{Third}")
         
         assert first_pos < second_pos < third_pos
         
@@ -110,10 +110,11 @@ class TestIntroductionIndex:
         output = generate_introduction_index(intro_dir)
         
         content = output.read_text()
-        assert r"\section{hello world test}" in content
+        # Now formats to title case with spaces
+        assert r"\section{Hello World Test}" in content
     
-    def test_only_includes_matching_section_number(self, tmp_path):
-        """Test that only subsections matching the section number are included."""
+    def test_empty_section_folder(self, tmp_path):
+        """Test that empty section folders are skipped."""
         intro_dir = tmp_path / "00_introduction"
         intro_dir.mkdir()
         sections_dir = intro_dir / "sections"
@@ -156,8 +157,8 @@ class TestIntroductionIndex:
         
         content = output.read_text()
         
-        # Extract input lines
-        lines = [line for line in content.split('\n') if r'\input{' in line]
+        # Extract section input lines (skip frontmatter/backmatter)
+        lines = [line for line in content.split('\n') if r'\input{' in line and 'sections/' in line]
         
         # Check order
         assert lines[0].endswith("1-1.tex}")
@@ -178,6 +179,194 @@ class TestIntroductionIndex:
         
         assert output.parent.exists()
         assert output.parent.name == "build"
+
+    def test_chapters_index_generation(self, tmp_path):
+        """Test that chapters_index.tex is generated with chapter includes in order."""
+        intro_dir = tmp_path / "00_introduction"
+        intro_dir.mkdir()
+        sections_dir = intro_dir / "sections"
+        sections_dir.mkdir()
+
+        for n, name in [(2, "second"), (1, "first")]:
+            section_dir = sections_dir / f"0{n}_{name}"
+            section_dir.mkdir()
+            (section_dir / "chapter.tex").write_text("% chapter", encoding="utf-8")
+
+        output = generate_chapters_index(intro_dir)
+        content = output.read_text()
+
+        first_pos = content.find("sections/01_first/chapter.tex")
+        second_pos = content.find("sections/02_second/chapter.tex")
+        assert first_pos < second_pos
+        assert content.startswith("% Auto-generated chapter include list")
+
+    def test_chapters_index_skips_missing_chapter(self, tmp_path):
+        """Chapters index should skip sections without chapter.tex."""
+        intro_dir = tmp_path / "00_introduction"
+        intro_dir.mkdir()
+        sections_dir = intro_dir / "sections"
+        sections_dir.mkdir()
+
+        good = sections_dir / "01_good"
+        good.mkdir()
+        (good / "chapter.tex").write_text("% ok", encoding="utf-8")
+
+        missing = sections_dir / "02_missing"
+        missing.mkdir()
+
+        output = generate_chapters_index(intro_dir)
+        content = output.read_text()
+
+        assert "sections/01_good/chapter.tex" in content
+        assert "02_missing" not in content
+
+
+class TestAppendixSupport:
+    """Test appendix support in index generation."""
+    
+    def test_no_appendix_directory(self, tmp_path):
+        """Test that no appendix code is generated when appendix/ doesn't exist."""
+        intro_dir = tmp_path / "00_introduction"
+        intro_dir.mkdir()
+        sections_dir = intro_dir / "sections"
+        sections_dir.mkdir()
+        
+        # Create a section
+        section_dir = sections_dir / "01_test"
+        section_dir.mkdir()
+        (section_dir / "1-1.tex").write_text("% Content")
+        
+        output = generate_introduction_index(intro_dir)
+        content = output.read_text()
+        
+        # Should not contain \appendix
+        assert "\\appendix" not in content
+    
+    def test_empty_appendix_directory(self, tmp_path):
+        """Test that no appendix code is generated when appendix/ is empty."""
+        intro_dir = tmp_path / "00_introduction"
+        intro_dir.mkdir()
+        sections_dir = intro_dir / "sections"
+        sections_dir.mkdir()
+        (intro_dir / "appendix").mkdir()
+        
+        # Create a section
+        section_dir = sections_dir / "01_test"
+        section_dir.mkdir()
+        (section_dir / "1-1.tex").write_text("% Content")
+        
+        output = generate_introduction_index(intro_dir)
+        content = output.read_text()
+        
+        # Should not contain \appendix
+        assert "\\appendix" not in content
+    
+    def test_appendix_with_files(self, tmp_path):
+        """Test that appendix files are included after sections."""
+        intro_dir = tmp_path / "00_introduction"
+        intro_dir.mkdir()
+        sections_dir = intro_dir / "sections"
+        sections_dir.mkdir()
+        appendix_dir = intro_dir / "appendix"
+        appendix_dir.mkdir()
+        
+        # Create a section
+        section_dir = sections_dir / "01_test"
+        section_dir.mkdir()
+        (section_dir / "1-1.tex").write_text("% Content")
+        
+        # Create appendix files
+        (appendix_dir / "01_notation.tex").write_text("% Notation")
+        (appendix_dir / "02_proofs.tex").write_text("% Proofs")
+        
+        output = generate_introduction_index(intro_dir)
+        content = output.read_text()
+        
+        # Should contain \appendix
+        assert "\\appendix" in content
+        
+        # Should contain appendix includes
+        assert "\\input{appendix/01_notation.tex}" in content
+        assert "\\input{appendix/02_proofs.tex}" in content
+        
+        # Appendix should come after sections
+        section_pos = content.find("\\input{sections/01_test/1-1.tex}")
+        appendix_pos = content.find("\\appendix")
+        assert section_pos < appendix_pos
+    
+    def test_appendix_files_sorted(self, tmp_path):
+        """Test that appendix files are included in sorted order."""
+        intro_dir = tmp_path / "00_introduction"
+        intro_dir.mkdir()
+        (intro_dir / "sections").mkdir()
+        appendix_dir = intro_dir / "appendix"
+        appendix_dir.mkdir()
+        
+        # Create appendix files out of order
+        (appendix_dir / "03_third.tex").write_text("% Third")
+        (appendix_dir / "01_first.tex").write_text("% First")
+        (appendix_dir / "02_second.tex").write_text("% Second")
+        
+        output = generate_introduction_index(intro_dir)
+        content = output.read_text()
+        
+        # Check order
+        first_pos = content.find("appendix/01_first.tex")
+        second_pos = content.find("appendix/02_second.tex")
+        third_pos = content.find("appendix/03_third.tex")
+        
+        assert first_pos < second_pos < third_pos
+    
+    def test_appendix_ignores_non_tex_files(self, tmp_path):
+        """Test that only .tex files in appendix/ are included."""
+        intro_dir = tmp_path / "00_introduction"
+        intro_dir.mkdir()
+        (intro_dir / "sections").mkdir()
+        appendix_dir = intro_dir / "appendix"
+        appendix_dir.mkdir()
+        
+        # Create various files
+        (appendix_dir / "01_include.tex").write_text("% Include")
+        (appendix_dir / "readme.md").write_text("# README")
+        (appendix_dir / "data.txt").write_text("data")
+        
+        output = generate_introduction_index(intro_dir)
+        content = output.read_text()
+        
+        # Should only include .tex file
+        assert "appendix/01_include.tex" in content
+        assert "readme.md" not in content
+        assert "data.txt" not in content
+    
+    def test_chapters_index_with_appendix(self, tmp_path):
+        """Test that chapters_index.tex includes appendix after chapters."""
+        intro_dir = tmp_path / "00_introduction"
+        intro_dir.mkdir()
+        sections_dir = intro_dir / "sections"
+        sections_dir.mkdir()
+        appendix_dir = intro_dir / "appendix"
+        appendix_dir.mkdir()
+        
+        # Create a section with chapter
+        section_dir = sections_dir / "01_chapter"
+        section_dir.mkdir()
+        (section_dir / "chapter.tex").write_text("% Chapter")
+        
+        # Create appendix files
+        (appendix_dir / "01_appendix.tex").write_text("% Appendix")
+        
+        output = generate_chapters_index(intro_dir)
+        content = output.read_text()
+        
+        # Should contain both chapter and appendix
+        assert "sections/01_chapter/chapter.tex" in content
+        assert "\\appendix" in content
+        assert "appendix/01_appendix.tex" in content
+        
+        # Appendix should come after chapter
+        chapter_pos = content.find("sections/01_chapter/chapter.tex")
+        appendix_pos = content.find("\\appendix")
+        assert chapter_pos < appendix_pos
 
 
 if __name__ == "__main__":

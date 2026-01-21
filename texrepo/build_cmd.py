@@ -7,7 +7,7 @@ from .common import find_repo_root, die, normalize_rel_path
 from .rules import STAGE_PIPELINE, entry_tex_candidates
 from .latex_log_hints import extract_primary_error, suggest_fixes
 from .layouts import get_layout
-from .introduction_index import generate_introduction_index
+from .introduction_index import generate_introduction_index, generate_chapters_index
 
 
 def needs_rebuild(paper_dir: Path) -> bool:
@@ -122,12 +122,84 @@ def sort_papers_by_stage_and_domain(papers: list[Path]) -> list[Path]:
     return sorted(papers, key=sort_key)
 
 
+def find_appendix_files(paper_dir: Path) -> list[Path]:
+    """Return sorted appendix .tex files if appendix/ exists, otherwise empty list."""
+    appendix_dir = paper_dir / "appendix"
+    if not appendix_dir.is_dir():
+        return []
+    return sorted(p for p in appendix_dir.glob("*.tex") if p.is_file())
+
+
+def write_appendix_include(paper_dir: Path, appendix_files: list[Path]) -> Path | None:
+    """Create build/texrepo_appendix.tex with \\appendix and inputs. Return path or None."""
+    if not appendix_files:
+        return None
+
+    build_dir = paper_dir / "build"
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    include_path = build_dir / "texrepo_appendix.tex"
+    lines = ["\\appendix", ""]
+    for f in appendix_files:
+        rel = f.relative_to(paper_dir).as_posix()
+        lines.append(f"\\input{{{rel}}}")
+    include_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return include_path
+
+
+def _insertion_index_for_appendix(entry_text: str) -> int:
+    """Find insertion point before bibliography or end of document."""
+    for token in ("\\bibliography", "\\printbibliography", "\\bibliographystyle"):
+        pos = entry_text.find(token)
+        if pos != -1:
+            return pos
+    end_pos = entry_text.find("\\end{document}")
+    if end_pos != -1:
+        return end_pos
+    return len(entry_text)
+
+
+def inject_appendix_into_entry(entry: Path, appendix_include: Path) -> Path:
+    """Create a temp entry that includes texrepo_appendix.tex before bibliography/end."""
+    entry_text = entry.read_text(encoding="utf-8")
+    insert_at = _insertion_index_for_appendix(entry_text)
+    rel_include = appendix_include.relative_to(entry.parent).as_posix()
+    injection = f"\n\\input{{{rel_include}}}\n"
+    new_text = entry_text[:insert_at] + injection + entry_text[insert_at:]
+
+    temp_entry = entry.parent / ".texrepo_entry_with_appendix.tex"
+    temp_entry.write_text(new_text, encoding="utf-8")
+    return temp_entry
+
+
+def _ensure_chapters_include(entry: Path, chapters_index: Path) -> Path:
+    """Ensure entry includes chapters_index.tex; inject if missing."""
+    entry_text = entry.read_text(encoding="utf-8")
+    include_snippet = "build/chapters_index.tex"
+    if include_snippet in entry_text:
+        return entry
+
+    # Prefer to insert before sections_index include if present
+    sections_marker = entry_text.find("build/sections_index.tex")
+    insert_at = sections_marker if sections_marker != -1 else _insertion_index_for_appendix(entry_text)
+
+    rel_include = chapters_index.relative_to(entry.parent).as_posix()
+    injection = f"\\input{{{rel_include}}}\n"
+    new_text = entry_text[:insert_at] + injection + entry_text[insert_at:]
+
+    temp_entry = entry.parent / ".texrepo_entry_with_chapters.tex"
+    temp_entry.write_text(new_text, encoding="utf-8")
+    return temp_entry
+
+
 def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
     """Build a single paper with given arguments."""
+    cleanup_entries: list[Path] = []
     # Handle introduction book (00_introduction)
     if is_introduction_book(paper_dir):
-        # Generate sections index before building
+        # Generate sections index before building (includes frontmatter, sections, appendix, backmatter)
         generate_introduction_index(paper_dir)
+        # Note: chapters_index is deprecated - all content now in sections_index
         entry = paper_dir / f"{paper_dir.name}.tex"
     else:
         # Regular paper: look for entry file
@@ -143,6 +215,14 @@ def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
             )
     
     log_path = paper_dir / "build" / f"{entry.stem}.log"
+    # No longer inject chapters_index - sections_index handles everything
+
+    appendix_files = find_appendix_files(paper_dir)
+    appendix_include = write_appendix_include(paper_dir, appendix_files)
+    build_entry_path = entry
+    if appendix_include:
+        build_entry_path = inject_appendix_into_entry(entry, appendix_include)
+        cleanup_entries.append(build_entry_path)
     
     # Check if rebuild is needed (unless --clean or --force is specified)
     if not args.clean and not getattr(args, 'force', False) and not needs_rebuild(paper_dir):
@@ -160,7 +240,15 @@ def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
     
     try:
         if args.engine == "latexmk":
-            cmd = ["latexmk", "-pdf", "-interaction=nonstopmode", "-halt-on-error", "-outdir=build", entry.name]
+            cmd = [
+                "latexmk",
+                "-pdf",
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "-outdir=build",
+                f"-jobname={entry.stem}",
+                build_entry_path.name,
+            ]
             print("▶", " ".join(cmd))
             subprocess.run(
                 cmd,
@@ -171,7 +259,14 @@ def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
             )
         else:
             # pdflatex requires multiple passes for references and citations
-            cmd = ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "-output-directory=build", entry.name]
+            cmd = [
+                "pdflatex",
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "-output-directory=build",
+                f"-jobname={entry.stem}",
+                build_entry_path.name,
+            ]
             
             print("▶ pdflatex pass 1/2")
             subprocess.run(
@@ -196,6 +291,13 @@ def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
         _print_error_card(paper_dir, repo_root, entry, args)
         rel_path = paper_dir.relative_to(repo_root)
         die(f"Build failed for: {rel_path}")
+    finally:
+        for cleanup_entry in cleanup_entries:
+            if cleanup_entry.exists():
+                try:
+                    cleanup_entry.unlink()
+                except Exception:
+                    pass
 
 
 def cmd_build(args) -> int:

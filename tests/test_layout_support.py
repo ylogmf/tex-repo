@@ -67,14 +67,33 @@ def test_status_accepts_new_layout_with_book_intro(tmp_path, monkeypatch):
     write_text(repo_path / "02_function_application" / "README.md", "# Function Application\n")
     write_text(repo_path / "03_hypnosis" / "README.md", "# Hypnosis\n")
     
-    # Create introduction book structure with entry file and sections/
+    # Create introduction book structure with entry file and required directories
     intro_path = repo_path / "00_introduction"
     write_text(intro_path / "00_introduction.tex", "\\documentclass{article}\n\\begin{document}\nIntro\n\\end{document}\n")
-    (intro_path / "sections").mkdir(parents=True, exist_ok=True)
     
-    # Create a section in introduction under sections/
-    section_dir = intro_path / "sections" / "01_foundations"
+    # Use new parts/ structure
+    parts_dir = intro_path / "parts"
+    (parts_dir / "sections").mkdir(parents=True, exist_ok=True)
+    (parts_dir / "frontmatter").mkdir(parents=True, exist_ok=True)
+    (parts_dir / "backmatter").mkdir(parents=True, exist_ok=True)
+    (parts_dir / "appendix").mkdir(parents=True, exist_ok=True)
+    (intro_path / "build").mkdir(parents=True, exist_ok=True)
+    
+    # Create required frontmatter files
+    write_text(parts_dir / "frontmatter" / "title.tex", "% Title\n")
+    write_text(parts_dir / "frontmatter" / "abstract.tex", "% Abstract\n")
+    write_text(parts_dir / "frontmatter" / "preface.tex", "% Preface\n")
+    write_text(parts_dir / "frontmatter" / "how_to_read.tex", "% How to read\n")
+    write_text(parts_dir / "frontmatter" / "toc.tex", "% TOC\n")
+    
+    # Create required backmatter files
+    write_text(parts_dir / "backmatter" / "scope_limits.tex", "% Scope and limits\n")
+    write_text(parts_dir / "backmatter" / "closing_notes.tex", "% Closing notes\n")
+    
+    # Create a section in introduction under parts/sections/ with chapter.tex
+    section_dir = parts_dir / "sections" / "01_foundations"
     section_dir.mkdir(parents=True, exist_ok=True)
+    write_text(section_dir / "chapter.tex", "% Chapter content\n")
     for i in range(1, 11):
         write_text(section_dir / f"1-{i}.tex", f"% Section 1, subsection {i}\n")
     
@@ -187,14 +206,18 @@ def test_ns_creates_section_with_10_subsections(tmp_path, monkeypatch):
     rc = cmd_ns(args)
     assert rc == 0, "ns command should succeed"
     
-    # Verify section directory was created with correct numbering under sections/
-    section_dir = repo_path / "00_introduction" / "sections" / "01_foundations"
-    assert section_dir.is_dir(), "Section directory should be created under sections/"
+    # Verify section directory was created with correct numbering under parts/sections/
+    section_dir = repo_path / "00_introduction" / "parts" / "sections" / "01_foundations"
+    assert section_dir.is_dir(), "Section directory should be created under parts/sections/"
     
     # Verify all 10 subsection files exist
     for i in range(1, 11):
         subsection_file = section_dir / f"1-{i}.tex"
         assert subsection_file.exists(), f"Subsection file 1-{i}.tex should exist"
+    
+    # Verify chapter.tex was created
+    chapter_file = section_dir / "chapter.tex"
+    assert chapter_file.exists(), "chapter.tex should be created"
     
     # Verify status passes after creating section
     result = check_repo_status(repo_path)
