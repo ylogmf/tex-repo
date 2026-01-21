@@ -482,6 +482,29 @@ class TestBuildCommand:
         pdf_path = repo_path / "00_introduction" / "build" / "00_introduction.pdf"
         assert pdf_path.exists(), "PDF should be generated"
     
+    def test_build_default_target_new_layout(self, tmp_path):
+        """Test that 'b' with no args defaults to 00_introduction in new layout."""
+        repo_path = tmp_path / "build-default-repo"
+        
+        run_texrepo(
+            ["init", str(repo_path), "--layout", "new"],
+            cwd=tmp_path,
+            input_text=default_metadata_input(),
+            check=True,
+        )
+        
+        # Build with no args from repo root - should default to 00_introduction
+        result = run_texrepo(["b"], cwd=repo_path)
+        assert result.returncode == 0, f"build with no args failed: {result.stdout}\n{result.stderr}"
+        
+        # Verify 00_introduction was built
+        pdf_path = repo_path / "00_introduction" / "build" / "00_introduction.pdf"
+        assert pdf_path.exists(), "Default build should have built 00_introduction"
+        
+        # Verify stdout mentions 00_introduction
+        combined_output = result.stdout + result.stderr
+        assert "00_introduction" in combined_output
+    
     def test_build_all(self, tmp_path):
         """Test building all papers."""
         repo_path = tmp_path / "build-all-repo"
@@ -562,6 +585,114 @@ class TestInstallCommand:
         result = run_texrepo(["install"], cwd=repo_path)
         # Allow non-zero exit if it's just informational
         assert result.returncode in (0, 1, 2)
+
+
+class TestRepoRootScript:
+    """Test that ./tex-repo script behaves identically to python -m texrepo."""
+    
+    def test_script_help_matches(self):
+        """Test that ./tex-repo -h matches python -m texrepo -h."""
+        script_path = REPO_ROOT / "tex-repo"
+        if not script_path.exists():
+            pytest.skip("tex-repo script not found at repo root")
+        
+        # Run via script
+        script_result = subprocess.run(
+            [str(script_path), "-h"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        
+        # Run via module
+        module_result = subprocess.run(
+            ["python3", "-m", "texrepo", "-h"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env={**os.environ, "PYTHONPATH": str(REPO_ROOT)},
+        )
+        
+        # Both should succeed
+        assert script_result.returncode == 0
+        assert module_result.returncode == 0
+        
+        # Check key phrases match
+        for phrase in ["Initialize", "status", "build", "release"]:
+            assert phrase in script_result.stdout
+            assert phrase in module_result.stdout
+    
+    def test_script_init_help_matches(self):
+        """Test that ./tex-repo init -h matches python -m texrepo init -h."""
+        script_path = REPO_ROOT / "tex-repo"
+        if not script_path.exists():
+            pytest.skip("tex-repo script not found at repo root")
+        
+        # Run via script
+        script_result = subprocess.run(
+            [str(script_path), "init", "-h"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        
+        # Run via module
+        module_result = subprocess.run(
+            ["python3", "-m", "texrepo", "init", "-h"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env={**os.environ, "PYTHONPATH": str(REPO_ROOT)},
+        )
+        
+        # Both should succeed
+        assert script_result.returncode == 0
+        assert module_result.returncode == 0
+        
+        # Check key phrases match and no old-layout refs in main description
+        for phrase in ["00_introduction", "paper-scale", "legacy-seed-text"]:
+            assert phrase in script_result.stdout
+            assert phrase in module_result.stdout
+    
+    def test_script_build_default_new_layout(self, tmp_path):
+        """Test that ./tex-repo b defaults to 00_introduction in new layout."""
+        script_path = REPO_ROOT / "tex-repo"
+        if not script_path.exists():
+            pytest.skip("tex-repo script not found at repo root")
+        
+        repo_path = tmp_path / "script-test-repo"
+        
+        # Init via script
+        init_result = subprocess.run(
+            [str(script_path), "init", str(repo_path), "--layout", "new"],
+            cwd=tmp_path,
+            input=default_metadata_input(),
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+        assert init_result.returncode == 0, f"init failed: {init_result.stderr}"
+        
+        # Build with no args via script
+        build_result = subprocess.run(
+            [str(script_path), "b"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert build_result.returncode == 0, f"build failed: {build_result.stdout}\n{build_result.stderr}"
+        
+        # Verify 00_introduction was built
+        pdf_path = repo_path / "00_introduction" / "build" / "00_introduction.pdf"
+        assert pdf_path.exists(), "Default build via script should have built 00_introduction"
+        
+        # Verify no mention of 00_world/01_spec in output
+        combined_output = build_result.stdout + build_result.stderr
+        assert "00_world" not in combined_output
+        assert "01_spec" not in combined_output or "00_introduction" in combined_output
 
 
 if __name__ == "__main__":
