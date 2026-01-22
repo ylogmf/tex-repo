@@ -331,7 +331,7 @@ def check_introduction_area(repo_root: Path, intro_dir: str, ignore_patterns: Se
         (intro_root / "appendix").exists()
     )
     if old_structure_detected:
-        messages.append(f"  {format_error(ErrorCode.INVALID_PLACEMENT, 'Legacy structure detected. Only parts/ is supported. Remove legacy dirs manually.', intro_dir)}")
+        messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Legacy introduction structure detected. Only parts/ structure is supported. Remove legacy dirs manually.', intro_dir)}")
         messages.append("")
         return StatusResult(False, messages)
     

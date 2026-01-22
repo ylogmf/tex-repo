@@ -6,6 +6,7 @@ from typing import List, Tuple, Optional
 from .common import find_repo_root, die, write_text
 from .config import create_default_config
 from .meta_cmd import sync_identity_tex
+from .errors import format_error, ErrorCode
 from .layouts import (
     LAYOUTS,
     DEFAULT_LAYOUT,
@@ -457,8 +458,13 @@ def fix_world_papers(
     return
 
 
-def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dry_run: bool = False) -> None:
-    """Fix introduction book structure (entry file, front/back matter under parts/)."""
+def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dry_run: bool = False) -> Optional[int]:
+    """Fix introduction book structure (entry file, front/back matter under parts/).
+    
+    Returns:
+        1 if legacy structure detected (error condition)
+        None if successful
+    """
     print("Checking introduction book structure...")
     
     intro_path = repo_root / intro_dir
@@ -472,13 +478,22 @@ def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dr
     )
     
     if old_structure_exists:
-        print(f"Error: Legacy introduction structure detected in {intro_path}")
-        print("Legacy directories found (sections/, frontmatter/, backmatter/, or appendix/ at top level).")
-        print("Only parts/ structure is supported. No backward compatibility.")
-        print("Remove legacy directories manually and re-run 'tex-repo fix'.")
-
-        import sys
-        sys.exit(1)
+        legacy_dirs = []
+        if (intro_path / "sections").exists():
+            legacy_dirs.append("sections/")
+        if (intro_path / "frontmatter").exists():
+            legacy_dirs.append("frontmatter/")
+        if (intro_path / "backmatter").exists():
+            legacy_dirs.append("backmatter/")
+        if (intro_path / "appendix").exists():
+            legacy_dirs.append("appendix/")
+        
+        print(format_error(
+            ErrorCode.UNEXPECTED_ITEM,
+            f"Legacy introduction structure detected: {', '.join(legacy_dirs)}Only parts/ structure is supported. Remove legacy dirs manually.",
+            str(intro_path)
+        ))
+        return 1
     
     # Create new parts/ structure only
     parts_dir = intro_path / "parts"
@@ -582,7 +597,9 @@ def cmd_fix(args) -> int:
             fix_world_papers(repo_root, result, foundation_rel, spec_rel, dry_run)
         intro_dir = stage_dir(layout_name, "introduction")
         if intro_dir and (repo_root / intro_dir).exists():
-            fix_introduction_book(repo_root, result, intro_dir, dry_run)
+            exit_code = fix_introduction_book(repo_root, result, intro_dir, dry_run)
+            if exit_code is not None:
+                return exit_code
         fix_readmes(repo_root, result, layout_name, dry_run)
         
         # Print results
