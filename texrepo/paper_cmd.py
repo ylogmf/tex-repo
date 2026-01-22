@@ -217,18 +217,11 @@ def cmd_np(args) -> int:
         title = args.title
     elif inferred_title:
         title = inferred_title
-    elif paper_rel == FOUNDATION_REL:
-        title = "Foundation"
-    elif paper_rel == SPEC_REL:
-        title = "Spec"
     else:
         title = "Untitled Paper"
-    if paper_rel == FOUNDATION_REL:
-        write_foundation_paper(repo, paper_dir, title)
-    elif paper_rel == SPEC_REL:
-        write_spec_paper(repo, paper_dir, title)
-    else:
-        write_generic_paper(repo, paper_dir, title)
+    
+    # No special handling for foundation/spec - only generic papers in new layout
+    write_generic_paper(repo, paper_dir, title)
 
     print(f"✅ New paper: {paper_rel}")
     return 0

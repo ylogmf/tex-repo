@@ -242,18 +242,9 @@ def fix_repository_structure(repo_root: Path, result: FixResult, layout_name: st
     for folder in layout_def.extras:
         check_and_create_directory(repo_root / folder, result, dry_run)
 
-    # World layer (old layout only)
-    world_paths = world_paths_for_layout(layout_name)
-    if world_paths:
-        foundation_rel, spec_rel = world_paths
-        check_and_create_directory(repo_root / foundation_rel, result, dry_run)
-        check_and_create_directory(repo_root / spec_rel, result, dry_run)
+    # No world layer in new layout
 
-    # Paper parents
-    formalism_dir = stage_dir(layout_name, "formalism")
-    if formalism_dir:
-        check_and_create_directory(repo_root / formalism_dir / PAPERS_DIRNAME, result, dry_run)
-
+    # Paper parents - no formalism in new layout
     process_dir = stage_dir(layout_name, "process_regime")
     if process_dir:
         for branch in get_process_branches(layout_name):
@@ -267,6 +258,16 @@ def fix_repository_structure(repo_root: Path, result: FixResult, layout_name: st
     hypnosis_dir = stage_dir(layout_name, "hypnosis")
     if hypnosis_dir:
         check_and_create_directory(repo_root / hypnosis_dir / PAPERS_DIRNAME, result, dry_run)
+    
+    # Introduction book structure (parts/ subdirectories)
+    intro_dir = stage_dir(layout_name, "introduction")
+    if intro_dir:
+        intro_path = repo_root / intro_dir
+        check_and_create_directory(intro_path / "parts" / "frontmatter", result, dry_run)
+        check_and_create_directory(intro_path / "parts" / "sections", result, dry_run)
+        check_and_create_directory(intro_path / "parts" / "backmatter", result, dry_run)
+        check_and_create_directory(intro_path / "parts" / "appendix", result, dry_run)
+        check_and_create_directory(intro_path / "build", result, dry_run)
 
 
 def fix_repository_files(repo_root: Path, result: FixResult, layout_name: str, dry_run: bool = False) -> None:
@@ -391,9 +392,7 @@ def fix_readmes(repo_root: Path, result: FixResult, layout_name: str, dry_run: b
 
     formalism_dir = stage_dir(layout_name, "formalism")
     if formalism_dir:
-        stage_readmes[formalism_dir] = (
-            "# Formalism\n\nAdmissible forms, closures, and representations grounded in the world layer.\n"
-        )
+    stage_readmes = {}
 
     intro_dir = stage_dir(layout_name, "introduction")
     if intro_dir:
@@ -401,7 +400,7 @@ def fix_readmes(repo_root: Path, result: FixResult, layout_name: str, dry_run: b
 
     process_dir = stage_dir(layout_name, "process_regime")
     if process_dir:
-        stage_readmes[process_dir] = "# Process Regime\n\nNatural processes and governing regimes built on the formalism.\n"
+        stage_readmes[process_dir] = "# Process Regime\n\nNatural processes and governing regimes.\n"
 
     function_dir = stage_dir(layout_name, "function_application")
     if function_dir:
@@ -431,8 +430,7 @@ def fix_readmes(repo_root: Path, result: FixResult, layout_name: str, dry_run: b
         ensure_readme(path, content, result, dry_run)
 
     paper_parents = []
-    if formalism_dir:
-        paper_parents.append(repo_root / formalism_dir / PAPERS_DIRNAME)
+    # No formalism in new layout
     if process_dir:
         for branch in get_process_branches(layout_name):
             paper_parents.append(repo_root / process_dir / branch / PAPERS_DIRNAME)
@@ -458,97 +456,42 @@ def fix_readmes(repo_root: Path, result: FixResult, layout_name: str, dry_run: b
 def fix_world_papers(
     repo_root: Path, result: FixResult, foundation_rel: Path, spec_rel: Path, dry_run: bool = False
 ) -> None:
-    """Fix world-layer paper skeletons."""
-    print("Checking world paper skeletons...")
-
-    foundation_dir = repo_root / foundation_rel
-    spec_dir = repo_root / spec_rel
-
-    for path in [
-        foundation_dir,
-        foundation_dir / "sections",
-        foundation_dir / "build",
-        spec_dir,
-        spec_dir / "sections",
-        spec_dir / "build",
-    ]:
-        check_and_create_directory(path, result, dry_run)
-
-    # Foundation
-    foundation_main = build_foundation_main_content(repo_root, foundation_dir, "Foundation")
-    check_and_create_file(foundation_dir / "refs.bib", "% BibTeX entries here\n", result, dry_run)
-    check_and_create_file(foundation_dir / f"{foundation_dir.name}.tex", foundation_main, result, dry_run)
-    check_and_create_file(
-        foundation_dir / "sections" / "00_definitions.tex",
-        "% Core definitions live here.\n",
-        result,
-        dry_run,
-    )
-    check_and_create_file(
-        foundation_dir / "sections" / "01_axioms.tex",
-        "% Axioms and governing principles live here.\n",
-        result,
-        dry_run,
-    )
-
-    # Spec
-    spec_main, section_count, include_abstract = build_generic_main_content(repo_root, spec_dir, "Spec")
-    check_and_create_file(spec_dir / "refs.bib", "% BibTeX entries here\n", result, dry_run)
-    check_and_create_file(spec_dir / f"{spec_dir.name}.tex", spec_main, result, dry_run)
-
-    if include_abstract:
-        check_and_create_file(
-            spec_dir / "sections" / "section_0.tex",
-            "% Abstract\n\nWrite abstract here.\n",
-            result,
-            dry_run,
-        )
-
-    for i in range(1, section_count + 1):
-        section_content = f"\\section{{Section {i}}}\n\nWrite here.\n"
-        check_and_create_file(spec_dir / "sections" / f"section_{i}.tex", section_content, result, dry_run)
+    """No longer supported - world layer removed in new layout."""
+    result.add_warning("World papers", "Not supported in new layout (no world/foundation/spec)")
+    return
 
 
 def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dry_run: bool = False) -> None:
-    """Fix introduction book structure (entry file, front/back matter, and sections/ directory)."""
+    """Fix introduction book structure (entry file, front/back matter under parts/)."""
     print("Checking introduction book structure...")
     
     intro_path = repo_root / intro_dir
     
-    # Check if old structure exists (sections/, frontmatter/, backmatter/ at top level)
+    # Check if old structure exists - fail if detected (no backward compat)
     old_structure_exists = (
         (intro_path / "sections").exists() or 
         (intro_path / "frontmatter").exists() or 
         (intro_path / "backmatter").exists()
     )
     
-    # If old structure exists, warn but don't migrate (backward compat)
     if old_structure_exists:
         result.add_warning(
             str(intro_path),
-            "Using legacy structure (sections/, frontmatter/ at top level). New repos use parts/ container."
+            "Old structure detected (sections/, frontmatter/ at top level). Only parts/ structure is supported. Migration required."
         )
-        # Still fix old structure
-        for d in ["sections", "frontmatter", "backmatter", "build"]:
-            check_and_create_directory(intro_path / d, result, dry_run)
-        
-        # Frontmatter/backmatter files in old location
-        for name, content in INTRO_FRONTMATTER.items():
-            check_and_create_file(intro_path / "frontmatter" / name, content, result, dry_run)
-        for name, content in INTRO_BACKMATTER.items():
-            check_and_create_file(intro_path / "backmatter" / name, content, result, dry_run)
-    else:
-        # Create new parts/ structure
-        parts_dir = intro_path / "parts"
-        for d in ["frontmatter", "sections", "backmatter", "appendix"]:
-            check_and_create_directory(parts_dir / d, result, dry_run)
-        check_and_create_directory(intro_path / "build", result, dry_run)
-        
-        # Frontmatter/backmatter files in new location
-        for name, content in INTRO_FRONTMATTER.items():
-            check_and_create_file(parts_dir / "frontmatter" / name, content, result, dry_run)
-        for name, content in INTRO_BACKMATTER.items():
-            check_and_create_file(parts_dir / "backmatter" / name, content, result, dry_run)
+        return
+    
+    # Create new parts/ structure only
+    parts_dir = intro_path / "parts"
+    for d in ["frontmatter", "sections", "backmatter", "appendix"]:
+        check_and_create_directory(parts_dir / d, result, dry_run)
+    check_and_create_directory(intro_path / "build", result, dry_run)
+    
+    # Frontmatter/backmatter files in parts/ location
+    for name, content in INTRO_FRONTMATTER.items():
+        check_and_create_file(parts_dir / "frontmatter" / name, content, result, dry_run)
+    for name, content in INTRO_BACKMATTER.items():
+        check_and_create_file(parts_dir / "backmatter" / name, content, result, dry_run)
 
     # Create entry .tex file
     intro_entry = intro_path / f"{intro_dir}.tex"

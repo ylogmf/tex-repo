@@ -49,18 +49,14 @@ def _suggest_closest_stage(invalid_stage: str, layout_name: str = DEFAULT_LAYOUT
         return f" Did you mean '{closest_stage}'?"
     return ""
 
-# Stage and layer names (default layout)
-WORLD_DIR = stage_dir(DEFAULT_LAYOUT, "world") or "00_world"
-FOUNDATION_REL, SPEC_REL = world_paths_for_layout(DEFAULT_LAYOUT) or (
-    Path(WORLD_DIR) / "00_foundation",
-    Path(WORLD_DIR) / "01_spec",
-)
-FOUNDATION_DIRNAME = FOUNDATION_REL.name
-SPEC_DIRNAME = SPEC_REL.name
-FORMALISM_DIR = stage_dir(DEFAULT_LAYOUT, "formalism") or "01_formalism"
+# Stage and layer names (only new layout supported - no world/foundation/spec)
 PROCESS_REGIME_DIR = stage_dir(DEFAULT_LAYOUT, "process_regime") or "02_process_regime"
 FUNCTION_APPLICATION_DIR = stage_dir(DEFAULT_LAYOUT, "function_application") or "03_function_application"
 PAPERS_DIRNAME = "papers"
+
+# Legacy constants for compatibility (always None in new layout)
+FOUNDATION_REL = None
+SPEC_REL = None
 
 # Structured subdomains
 PROCESS_BRANCHES = get_process_branches(DEFAULT_LAYOUT)
@@ -180,21 +176,18 @@ def resolve_paper_path(user_rel: Path, layout_name: str = DEFAULT_LAYOUT) -> Pat
 
     top = user_rel.parts[0]
 
+    # Reject papers under introduction - it's book-only
     intro_dir = stage_dir(layout_name, "introduction")
     if intro_dir and top == intro_dir:
         die(format_error(ErrorCode.INVALID_PARENT, f"Papers cannot be placed under {intro_dir}; create sections there instead"))
 
+    # No world layer in new layout - reject if attempted
     world_dir = stage_dir(layout_name, "world")
-    world_paths = world_paths_for_layout(layout_name)
     if world_dir and top == world_dir:
-        if world_paths and len(user_rel.parts) == 2:
-            allowed = {p.name for p in world_paths}
-            if user_rel.parts[1] in allowed:
-                return user_rel
-        allowed = ", ".join(p.name for p in world_paths) if world_paths else ""
-        die(format_error(ErrorCode.INVALID_PARENT, f"Only {allowed} are allowed under {world_dir}"))
+        die(format_error(ErrorCode.INVALID_PARENT, f"{world_dir} is not supported in new layout"))
 
-    simple_stages = [s for s in (stage_dir(layout_name, "formalism"), stage_dir(layout_name, "introduction"), stage_dir(layout_name, "hypnosis")) if s]
+    # Simple stages: hypnosis (formalism removed, introduction already rejected above)
+    simple_stages = [s for s in (stage_dir(layout_name, "hypnosis"),) if s]
     if top in simple_stages:
         slug = _extract_slug(tuple(user_rel.parts[1:]), top, allow_papers_prefix=True)
         return Path(top) / PAPERS_DIRNAME / slug
