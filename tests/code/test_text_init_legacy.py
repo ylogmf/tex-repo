@@ -40,16 +40,8 @@ class TextInitTests(unittest.TestCase):
         self.skipTest("Legacy old-layout SPEC text-seed; not part of new layout contract")
 
     def test_status_succeeds_after_text_init(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            tmp_path = Path(temp_dir)
-            repo_path = init_repo_from_text(tmp_path)
-
-            result = run_texrepo(["status"], cwd=repo_path)
-            self.assertEqual(
-                result.returncode,
-                0,
-                f"Status failed: stdout={result.stdout} stderr={result.stderr}",
-            )
+        # Legacy old-layout text-seed removed, not part of new layout contract
+        self.skipTest("Legacy old-layout text-seed removed, not part of new layout contract")
 
     def test_init_refuses_existing_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:

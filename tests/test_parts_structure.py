@@ -77,64 +77,26 @@ class TestPartsStructure:
         assert r"\input{parts/sections/01_first/chapter.tex}" in content
         assert r"\input{parts/sections/02_second/chapter.tex}" in content
     
-    def test_backward_compat_sections(self, tmp_path):
-        """Test backward compatibility with old sections/ structure."""
+    def test_legacy_structure_rejected(self, tmp_path):
+        """Test that legacy structure (sections at top level) is rejected."""
         intro_dir = tmp_path / "00_introduction"
         intro_dir.mkdir()
+        
+        # Create legacy structure (sections at intro_dir level, not under parts/)
         sections_dir = intro_dir / "sections"
         sections_dir.mkdir()
-        
-        # Create section using old structure
         section_dir = sections_dir / "01_test"
         section_dir.mkdir()
         (section_dir / "1-1.tex").write_text("% Content")
         
-        output = generate_introduction_index(intro_dir)
-        content = output.read_text()
-        
-        # Should use old sections prefix
-        assert r"\input{sections/01_test/1-1.tex}" in content
-    
-    def test_backward_compat_appendix(self, tmp_path):
-        """Test backward compatibility with old appendix/ structure."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        (intro_dir / "sections").mkdir()
-        appendix_dir = intro_dir / "appendix"
-        appendix_dir.mkdir()
-        
-        (appendix_dir / "01_notes.tex").write_text("% Notes")
-        
-        output = generate_introduction_index(intro_dir)
-        content = output.read_text()
-        
-        # Should use old appendix prefix
-        assert r"\input{appendix/01_notes.tex}" in content
-    
-    def test_prefers_new_over_old(self, tmp_path):
-        """Test that new parts/ structure is preferred when both exist."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        
-        # Create both old and new structures
-        old_sections = intro_dir / "sections"
-        old_sections.mkdir()
-        old_section = old_sections / "01_old"
-        old_section.mkdir()
-        (old_section / "1-1.tex").write_text("% Old")
-        
-        parts_sections = intro_dir / "parts" / "sections"
-        parts_sections.mkdir(parents=True)
-        new_section = parts_sections / "01_new"
-        new_section.mkdir()
-        (new_section / "1-1.tex").write_text("% New")
-        
-        output = generate_introduction_index(intro_dir)
-        content = output.read_text()
-        
-        # Should use new structure (parts/sections)
-        assert r"\input{parts/sections/01_new/1-1.tex}" in content
-        assert "sections/01_old" not in content
+        # Should fail because parts/ directory is missing
+        try:
+            output = generate_introduction_index(intro_dir)
+            # If we get here, it should have raised an error
+            assert False, "Expected SystemExit or error for legacy structure"
+        except SystemExit:
+            # Expected behavior - legacy structure is rejected
+            pass
     
     def test_multiple_sections_new_structure(self, tmp_path):
         """Test multiple sections with new parts/ structure in correct order."""

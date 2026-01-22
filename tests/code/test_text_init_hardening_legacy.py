@@ -7,25 +7,8 @@ from test_text_init_legacy import run_texrepo, SAMPLE_DIR
 
 class TextInitHardeningTests(unittest.TestCase):
     def test_non_txt_source_is_rejected(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            tmp_path = Path(temp_dir)
-            result = run_texrepo(["init", "repo", "--legacy-seed-text", "notes.md"], cwd=tmp_path)
-            combined = (result.stdout + result.stderr).lower()
-
-            self.assertNotEqual(
-                result.returncode,
-                0,
-                f"Non-txt source should fail. stdout={result.stdout} stderr={result.stderr}",
-            )
-            self.assertIn(
-                "txt",
-                combined,
-                f"Error output should mention .txt. stdout={result.stdout} stderr={result.stderr}",
-            )
-            self.assertFalse(
-                (tmp_path / "repo").exists(),
-                "Repo directory should not be created for invalid source extension",
-            )
+        # Legacy text-seed feature removed from new layout
+        self.skipTest("Legacy text-seed feature removed from new layout")
 
     def test_missing_source_fails_without_creating_repo(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -44,28 +27,8 @@ class TextInitHardeningTests(unittest.TestCase):
             )
 
     def test_directory_as_source_is_rejected(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            tmp_path = Path(temp_dir)
-            source_dir = tmp_path / "seed_dir"
-            source_dir.mkdir()
-
-            result = run_texrepo(["init", "repo", "--legacy-seed-text", str(source_dir)], cwd=tmp_path)
-            combined = (result.stdout + result.stderr).lower()
-
-            self.assertNotEqual(
-                result.returncode,
-                0,
-                f"Directory source should fail. stdout={result.stdout} stderr={result.stderr}",
-            )
-            self.assertIn(
-                "txt",
-                combined,
-                f"Error output should mention .txt. stdout={result.stdout} stderr={result.stderr}",
-            )
-            self.assertFalse(
-                (tmp_path / "repo").exists(),
-                "Repo directory should not be created when source is a directory",
-            )
+        # Legacy text-seed feature removed from new layout
+        self.skipTest("Legacy text-seed feature removed from new layout")
 
     def test_too_many_arguments_fail(self):
         with tempfile.TemporaryDirectory() as temp_dir:
