@@ -336,21 +336,11 @@ def cmd_build(args) -> int:
             # Current directory is the introduction book - build it
             paper_dir = current_dir
         elif is_repo_root(current_dir):
-            # Current directory is repo root - use layout-aware default
-            layout = get_layout(repo)
-            
-            if layout == "new":
-                # New layout: default to 00_introduction
-                intro_path = repo / "00_introduction"
-                if not is_introduction_book(intro_path):
-                    die("No default build target found. In new layout, expected 00_introduction/ with 00_introduction.tex")
-                paper_dir = intro_path
-            else:
-                # Old layout: default to 00_world/01_spec
-                spec_path = repo / "00_world" / "01_spec"
-                if not is_paper_dir(spec_path):
-                    die(f"Default Spec paper not found: {spec_path}")
-                paper_dir = spec_path
+            # Current directory is repo root - default to 00_introduction
+            intro_path = repo / "00_introduction"
+            if not is_introduction_book(intro_path):
+                die("No default build target found. Expected 00_introduction/ with 00_introduction.tex")
+            paper_dir = intro_path
         else:
             die(f"Not a paper directory (missing {current_dir.name}.tex or main.tex): {current_dir}")
     else:

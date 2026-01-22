@@ -127,7 +127,7 @@ def _write_readme_if_missing(path: Path, content: str) -> None:
     write_text(path, content)
 
 
-INTRO_ENTRY_TEMPLATE = r"""\documentclass[11pt]{article}
+INTRO_ENTRY_TEMPLATE = r"""\documentclass[11pt]{book}
 \input{../shared/preamble}
 \input{../shared/macros}
 \input{../shared/notation}
@@ -137,9 +137,15 @@ INTRO_ENTRY_TEMPLATE = r"""\documentclass[11pt]{article}
 \date{}
 
 \begin{document}
-\maketitle
 
+\frontmatter
 \input{build/sections_index.tex}
+
+\mainmatter
+% Main content sections are included via sections_index.tex
+
+\backmatter
+% Backmatter is included via sections_index.tex
 
 \end{document}
 """
@@ -201,23 +207,18 @@ This back matter closes the scope without adding conclusions. It reiterates that
 
 
 def cmd_init(args) -> int:
-    source_text_path = None
-    text_content = None
     layout_name = getattr(args, "layout", DEFAULT_LAYOUT)
     if layout_name not in LAYOUTS:
-        print(f"Error: Unknown layout '{layout_name}'. Choose from: {', '.join(LAYOUTS)}")
+        print(f"Error: Unknown layout '{layout_name}'. Only 'new' layout is supported.")
         return 1
 
-    # Determine repo name and optional text seed
+    # Reject legacy seed - no longer supported
     legacy_seed = getattr(args, "legacy_seed_text", None)
     if legacy_seed:
-        source_text_path = Path(legacy_seed)
-        if source_text_path.suffix.lower() != ".txt":
-            print("Error: --legacy-seed-text must be a .txt file")
-            return 1
+        print("Error: --legacy-seed-text is not supported. Only 'new' layout is available.")
+        return 1
     
     repo_name = args.target
-
     repo = Path(repo_name).expanduser().resolve()
     
     # Check if this is an existing directory
@@ -231,23 +232,8 @@ def cmd_init(args) -> int:
                 print("Will not overwrite existing .gitignore file.")
         return 1
 
-    # Load text content (if provided) before making any changes
-    if source_text_path:
-        source_text_path = source_text_path.expanduser().resolve()
-        if not source_text_path.exists():
-            print(f"Error: Source text file not found: {source_text_path}")
-            return 1
-        try:
-            text_content = source_text_path.read_text(encoding="utf-8")
-        except Exception as e:
-            print(f"Error: Could not read source text file: {e}")
-            return 1
-    else:
-        source_text_path = None
-
-    if not repo.exists():
-        # New directory
-        repo.mkdir(parents=True, exist_ok=False)
+    # New directory
+    repo.mkdir(parents=True, exist_ok=False)
 
     # Prompt for metadata interactively
     metadata = prompt_for_metadata(repo.name)
@@ -273,22 +259,9 @@ def cmd_init(args) -> int:
     for extra in LAYOUTS[layout_name].extras:
         (repo / extra).mkdir(parents=True, exist_ok=True)
 
-    # world layer
-    world_paths = world_paths_for_layout(layout_name)
-    foundation_dir = None
-    spec_dir = None
-    if world_paths:
-        foundation_rel, spec_rel = world_paths
-        foundation_dir = repo / foundation_rel
-        spec_dir = repo / spec_rel
-        foundation_dir.mkdir(parents=True, exist_ok=True)
-        spec_dir.mkdir(parents=True, exist_ok=True)
+    # No world layer in new layout
 
     # paper locations
-    formalism_dir = stage_dir(layout_name, "formalism")
-    if formalism_dir:
-        (repo / formalism_dir / PAPERS_DIRNAME).mkdir(parents=True, exist_ok=True)
-
     intro_dir = stage_dir(layout_name, "introduction")
 
     process_dir = stage_dir(layout_name, "process_regime")
@@ -356,37 +329,9 @@ def cmd_init(args) -> int:
 """,
     )
 
-    # Seed world papers when applicable
-    if foundation_dir and spec_dir:
-        write_foundation_paper(repo, foundation_dir, "Foundation")
-        write_spec_paper(repo, spec_dir, "Spec")
+    # No world papers - removed in new layout
 
-        if text_content is not None:
-            section_path = spec_dir / "sections" / "section_1.tex"
-            safe_text = escape_latex_string(text_content)
-            if not safe_text.endswith("\n"):
-                safe_text += "\n"
-            write_text(section_path, f"\\section{{Section 1}}\n\n{safe_text}")
-    elif text_content is not None:
-        print("⚠️  Source text provided but layout has no spec target; seed was ignored.")
-
-    # Seed required READMEs without overwriting existing content
-    world_dir = stage_dir(layout_name, "world")
-    if world_dir and foundation_dir and spec_dir:
-        _write_readme_if_missing(
-            repo / world_dir / "README.md",
-            "# World\n\nShared foundation and spec papers live here.\n",
-        )
-        _write_readme_if_missing(
-            foundation_dir / "README.md",
-            "# Foundation\n\nImmutable foundations that all other layers rely on.\n",
-        )
-        _write_readme_if_missing(
-            spec_dir / "README.md",
-            "# Spec\n\nThe primary specification paper for this repository.\n",
-        )
-
-    # Create book structure for introduction (new layout)
+    # Create book structure for introduction
     if intro_dir:
         intro_path = repo / intro_dir
         # Create parts/ container structure
@@ -415,14 +360,10 @@ def cmd_init(args) -> int:
             write_text(intro_entry, INTRO_ENTRY_TEMPLATE)
 
     stage_readmes = {}
-    if formalism_dir:
-        stage_readmes[formalism_dir] = (
-            "# Formalism\n\nAdmissible forms, closures, and representations grounded in the world layer.\n"
-        )
     if intro_dir:
         stage_readmes[intro_dir] = "# Introduction\n\nBook-scale introduction with numbered sections. Use 'tex-repo ns <section-name>' to create sections.\n"
     if process_dir:
-        stage_readmes[process_dir] = "# Process Regime\n\nNatural processes and governing regimes built on the formalism.\n"
+        stage_readmes[process_dir] = "# Process Regime\n\nNatural processes and governing regimes.\n"
     if function_dir:
         stage_readmes[function_dir] = (
             "# Function Application\n\nFunctions and applications that depend on process/regime outputs.\n"

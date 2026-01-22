@@ -15,31 +15,9 @@ class LayoutDefinition:
 
 
 DEFAULT_LAYOUT = "new"
-LEGACY_LAYOUT_ALIASES = {"staged": "old"}
-ALLOWED_TOP_LEVEL_COMPAT = {"SPEC", "04_testbed", "04_testbeds"}
 
-
+# Only new layout supported - no backward compatibility
 LAYOUTS: Dict[str, LayoutDefinition] = {
-    "old": LayoutDefinition(
-        required_dirs=[
-            "00_world",
-            "01_formalism",
-            "02_process_regime",
-            "03_function_application",
-        ],
-        extras={"shared", "scripts", "98_context", "99_legacy", "releases"},
-        stage_dirs={
-            "world": "00_world",
-            "formalism": "01_formalism",
-            "process_regime": "02_process_regime",
-            "function_application": "03_function_application",
-        },
-        branches={
-            "process_regime": ("process", "regime"),
-            "function_application": ("function", "application"),
-        },
-        world_subdirs=("00_foundation", "01_spec"),
-    ),
     "new": LayoutDefinition(
         required_dirs=[
             "00_introduction",
@@ -61,15 +39,12 @@ LAYOUTS: Dict[str, LayoutDefinition] = {
     ),
 }
 
-
 def normalize_layout_name(name: str | None) -> str | None:
     if not name:
         return None
     normalized = name.strip().lower()
     if normalized in LAYOUTS:
         return normalized
-    if normalized in LEGACY_LAYOUT_ALIASES:
-        return LEGACY_LAYOUT_ALIASES[normalized]
     return None
 
 
@@ -78,10 +53,7 @@ def _layout(layout_name: str) -> LayoutDefinition:
 
 
 def autodetect_layout(repo_root: Path) -> str:
-    """Infer layout from on-disk structure."""
-    new_root = _layout("new").stage_dirs.get("introduction")
-    if new_root and (repo_root / new_root).exists():
-        return "new"
+    """Only 'new' layout is supported."""
     return DEFAULT_LAYOUT
 
 
@@ -107,7 +79,7 @@ def required_dirs(layout_name: str) -> List[str]:
 
 def allowed_top_level(layout_name: str) -> Set[str]:
     layout = _layout(layout_name)
-    return set(layout.required_dirs) | set(layout.extras) | set(ALLOWED_TOP_LEVEL_COMPAT)
+    return set(layout.required_dirs) | set(layout.extras)
 
 
 def stage_dir(layout_name: str, role: str) -> str | None:
@@ -119,12 +91,8 @@ def stage_pipeline(layout_name: str) -> List[str]:
 
 
 def world_paths_for_layout(layout_name: str) -> tuple[Path, Path] | None:
-    layout = _layout(layout_name)
-    world_dir = layout.stage_dirs.get("world")
-    if not world_dir or not layout.world_subdirs:
-        return None
-    foundation, spec = layout.world_subdirs
-    return Path(world_dir) / foundation, Path(world_dir) / spec
+    """No world paths in new layout - returns None."""
+    return None
 
 
 def get_process_branches(layout_name: str) -> Tuple[str, ...]:

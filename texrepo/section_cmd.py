@@ -7,7 +7,7 @@ from .layouts import get_layout, stage_dir
 
 
 def cmd_ns(args) -> int:
-    """Create a numbered section within the introduction book (00_introduction/) with 10 subsection files."""
+    """Create a numbered section within the introduction book (00_introduction/parts/sections/) with 10 subsection files."""
     repo_root = find_repo_root()
     layout_name = get_layout(repo_root)
     intro_dir = stage_dir(layout_name, "introduction")
@@ -18,17 +18,12 @@ def cmd_ns(args) -> int:
     if not intro_root.exists():
         die(f"Introduction directory does not exist: {intro_dir}")
 
-    # Prefer new parts/sections/ structure, fall back to old sections/ for backward compat
-    parts_sections_root = intro_root / "parts" / "sections"
-    old_sections_root = intro_root / "sections"
+    # Enforce new parts/sections/ structure only - no backward compatibility
+    parts_dir = intro_root / "parts"
+    sections_root = parts_dir / "sections"
     
-    # Determine which path to use (prefer parts/ if it exists)
-    if (intro_root / "parts").exists():
-        sections_root = parts_sections_root
-        sections_prefix = "parts/sections"
-    else:
-        sections_root = old_sections_root
-        sections_prefix = "sections"
+    if not parts_dir.exists():
+        die(f"Introduction must have parts/ subdirectory. Run 'tex-repo fix' to repair structure.")
     
     sections_root.mkdir(parents=True, exist_ok=True)
 
@@ -44,11 +39,11 @@ def cmd_ns(args) -> int:
 
     # Create chapter file that includes subsections in order
     chapter_path = section_path / "chapter.tex"
-    rel_base = f"{sections_prefix}/{prefix}_{args.section_name}"
     if not chapter_path.exists():
-        include_lines = [f"\\section*{{Chapter {section_num}: {args.section_name.replace('_', ' ')}}}", ""]
+        # chapter.tex just includes the subsections - titles are generated in sections_index.tex
+        include_lines = []
         for i in range(1, 11):
-            include_lines.append(f"\\input{{{rel_base}/{section_num}-{i}.tex}}")
+            include_lines.append(f"\\input{{parts/sections/{prefix}_{args.section_name}/{section_num}-{i}.tex}}")
         include_lines.append("")
         write_text(chapter_path, "\n".join(include_lines))
 
