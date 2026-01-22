@@ -390,10 +390,6 @@ def fix_readmes(repo_root: Path, result: FixResult, layout_name: str, dry_run: b
 
     stage_readmes = {}
 
-    formalism_dir = stage_dir(layout_name, "formalism")
-    if formalism_dir:
-    stage_readmes = {}
-
     intro_dir = stage_dir(layout_name, "introduction")
     if intro_dir:
         stage_readmes[intro_dir] = "# Introduction\n\nBook-scale introduction with numbered sections. Use 'tex-repo ns <section-name>' to create sections.\n"
