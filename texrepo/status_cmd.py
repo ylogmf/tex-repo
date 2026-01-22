@@ -17,7 +17,6 @@ from .layouts import (
     get_process_branches,
     required_dirs,
     stage_dir,
-    world_paths_for_layout,
 )
 from .meta_cmd import parse_paperrepo_metadata
 from .errors import ErrorCode, format_error
@@ -214,19 +213,9 @@ def check_repo_status(repo_root: Path) -> StatusResult:
 
     checks = [check_top_level_structure(repo_root, ignore_patterns, layout_name)]
 
-    world_paths = world_paths_for_layout(layout_name)
-    world_dir = stage_dir(layout_name, "world")
-    if world_dir and world_paths:
-        foundation_rel, spec_rel = world_paths
-        checks.append(check_world_area(repo_root, ignore_patterns, world_dir, foundation_rel, spec_rel))
-
     intro_dir = stage_dir(layout_name, "introduction")
     if intro_dir:
         checks.append(check_introduction_area(repo_root, intro_dir, ignore_patterns))
-
-    formalism_dir = stage_dir(layout_name, "formalism")
-    if formalism_dir:
-        checks.append(check_stage_with_papers(repo_root, formalism_dir, ignore_patterns))
 
     process_dir = stage_dir(layout_name, "process_regime")
     if process_dir:
@@ -304,82 +293,6 @@ def check_top_level_structure(repo_root: Path, ignore_patterns: Set[str], layout
     return StatusResult(is_compliant, messages)
 
 
-def check_world_area(
-    repo_root: Path, ignore_patterns: Set[str], world_dir: str, foundation_rel: Path, spec_rel: Path
-) -> StatusResult:
-    """Validate 00_world with foundation and spec."""
-    messages = ["🔍 Checking world layer..."]
-    is_compliant = True
-    ignored_count = 0
-
-    world_root = repo_root / world_dir
-    if not world_root.exists():
-        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'{world_dir} directory missing')}")
-        messages.append("")
-        return StatusResult(False, messages)
-
-    world_readme = world_root / "README.md"
-    if not world_readme.exists():
-        messages.append(f"  {format_error(ErrorCode.README_MISSING, 'README.md missing', world_dir)}")
-        is_compliant = False
-
-    foundation_dir = repo_root / foundation_rel
-    if foundation_dir.exists():
-        if not (foundation_dir / "README.md").exists():
-            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'README.md missing', str(foundation_rel))}")
-            is_compliant = False
-        entry = _find_entry_tex(foundation_dir)
-        if not entry:
-            messages.append(f"  {format_error(ErrorCode.MAIN_TEX_MISSING, 'Entry .tex file missing', str(foundation_rel))}")
-            is_compliant = False
-        elif entry.name == "main.tex":
-            messages.append(f"  ⚠️  Legacy entry file main.tex detected (expected {foundation_dir.name}.tex): {foundation_rel}")
-        for section_name in ["00_definitions.tex", "01_axioms.tex"]:
-            if not (foundation_dir / "sections" / section_name).exists():
-                messages.append(
-                    f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'Missing {section_name}', str(foundation_rel))}"
-                )
-                is_compliant = False
-    else:
-        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'Foundation directory missing', str(foundation_rel))}")
-        is_compliant = False
-
-    spec_dir = repo_root / spec_rel
-    if spec_dir.exists():
-        if not (spec_dir / "README.md").exists():
-            messages.append(f"  {format_error(ErrorCode.README_MISSING, 'README.md missing', str(spec_rel))}")
-            is_compliant = False
-        entry = _find_entry_tex(spec_dir)
-        if not entry:
-            messages.append(f"  {format_error(ErrorCode.MAIN_TEX_MISSING, 'Entry .tex file missing', str(spec_rel))}")
-            is_compliant = False
-        elif entry.name == "main.tex":
-            messages.append(f"  ⚠️  Legacy entry file main.tex detected (expected {spec_dir.name}.tex): {spec_rel}")
-        if not (spec_dir / "refs.bib").exists():
-            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'refs.bib missing', str(spec_rel))}")
-            is_compliant = False
-    else:
-        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'World spec directory missing', str(spec_rel))}")
-        is_compliant = False
-
-    for item in world_root.iterdir():
-        if item.name.startswith("."):
-            continue
-        if item.name in {foundation_rel.name, spec_rel.name, "README.md"}:
-            continue
-        if is_ignored_by_patterns(item, repo_root, ignore_patterns):
-            ignored_count += 1
-            continue
-        messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, f'Unexpected item in {world_dir}/', item.name)}")
-        is_compliant = False
-
-    if ignored_count > 0:
-        messages.append(f"  ℹ️ ignored {ignored_count} items in {world_dir}/")
-
-    messages.append("")
-    return StatusResult(is_compliant, messages)
-
-
 def _parse_section_dirname(name: str) -> int | None:
     m = re.match(r"^(\d\d)_.+$", name)
     if not m:
@@ -410,76 +323,51 @@ def check_introduction_area(repo_root: Path, intro_dir: str, ignore_patterns: Se
         messages.append(f"  {format_error(ErrorCode.MAIN_TEX_MISSING, f'{intro_dir}.tex missing (book entry file)', intro_dir)}")
         is_compliant = False
 
-    # Check for new parts/ structure vs old structure
-    parts_dir = intro_root / "parts"
-    old_structure = (intro_root / "sections").exists() or (intro_root / "frontmatter").exists()
-    new_structure = parts_dir.exists()
-    
-    if new_structure:
-        # Validate new parts/ structure
-        required_dirs = ["frontmatter", "sections", "backmatter", "appendix"]
-        required_front = ["title.tex", "preface.tex", "how_to_read.tex", "toc.tex"]
-        required_back = ["scope_limits.tex", "closing_notes.tex"]
-        
-        for d in required_dirs:
-            path = parts_dir / d
-            if not path.exists():
-                messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'parts/{d}/ directory missing', intro_dir)}")
-                is_compliant = False
-        
-        # Check build/ at intro level
-        if not (intro_root / "build").exists():
-            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'build/ directory missing', intro_dir)}")
-            is_compliant = False
-        
-        # Frontmatter/backmatter files
-        front_dir = parts_dir / "frontmatter"
-        back_dir = parts_dir / "backmatter"
-        for fname in required_front:
-            if front_dir.exists() and not (front_dir / fname).exists():
-                messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'parts/frontmatter/{fname} missing', intro_dir)}")
-                is_compliant = False
-        for fname in required_back:
-            if back_dir.exists() and not (back_dir / fname).exists():
-                messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'parts/backmatter/{fname} missing', intro_dir)}")
-                is_compliant = False
-        
-        # Check sections/ directory
-        sections_dir = parts_dir / "sections"
-        sections_prefix = "parts/sections"
-    elif old_structure:
-        # Backward compatibility: validate old structure with warning
-        messages.append(f"  ⚠️  Using legacy structure (sections/, frontmatter/ at top level). New repos use parts/ container.")
-        
-        required_dirs = ["frontmatter", "sections", "backmatter", "build"]
-        required_front = ["title.tex", "preface.tex", "how_to_read.tex", "toc.tex"]
-        required_back = ["scope_limits.tex", "closing_notes.tex"]
-        
-        for d in required_dirs:
-            path = intro_root / d
-            if not path.exists():
-                messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'{d}/ directory missing', intro_dir)}")
-                is_compliant = False
-        
-        # Frontmatter/backmatter files
-        front_dir = intro_root / "frontmatter"
-        back_dir = intro_root / "backmatter"
-        for fname in required_front:
-            if front_dir.exists() and not (front_dir / fname).exists():
-                messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'frontmatter/{fname} missing', intro_dir)}")
-                is_compliant = False
-        for fname in required_back:
-            if back_dir.exists() and not (back_dir / fname).exists():
-                messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'backmatter/{fname} missing', intro_dir)}")
-                is_compliant = False
-        
-        sections_dir = intro_root / "sections"
-        sections_prefix = "sections"
-    else:
-        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'Neither parts/ nor sections/ directory found', intro_dir)}")
-        is_compliant = False
+    # Reject old structure explicitly
+    old_structure_detected = (intro_root / "sections").exists() or (intro_root / "frontmatter").exists()
+    if old_structure_detected:
+        messages.append(f"  {format_error(ErrorCode.STRUCTURE_INVALID, 'Old layout structure detected. Only parts/ structure supported. Run tex-repo fix to migrate.', intro_dir)}")
         messages.append("")
-        return StatusResult(is_compliant, messages)
+        return StatusResult(False, messages)
+    
+    # Enforce new parts/ structure only
+    parts_dir = intro_root / "parts"
+    if not parts_dir.exists():
+        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'parts/ directory missing (required structure)', intro_dir)}")
+        messages.append("")
+        return StatusResult(False, messages)
+    
+    # Validate required parts/ subdirectories
+    required_dirs = ["frontmatter", "sections", "backmatter", "appendix"]
+    required_front = ["title.tex", "preface.tex", "how_to_read.tex", "toc.tex"]
+    required_back = ["scope_limits.tex", "closing_notes.tex"]
+    
+    for d in required_dirs:
+        path = parts_dir / d
+        if not path.exists():
+            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'parts/{d}/ directory missing', intro_dir)}")
+            is_compliant = False
+    
+    # Check build/ at intro level
+    if not (intro_root / "build").exists():
+        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'build/ directory missing', intro_dir)}")
+        is_compliant = False
+    
+    # Frontmatter/backmatter files
+    front_dir = parts_dir / "frontmatter"
+    back_dir = parts_dir / "backmatter"
+    for fname in required_front:
+        if front_dir.exists() and not (front_dir / fname).exists():
+            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'parts/frontmatter/{fname} missing', intro_dir)}")
+            is_compliant = False
+    for fname in required_back:
+        if back_dir.exists() and not (back_dir / fname).exists():
+            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'parts/backmatter/{fname} missing', intro_dir)}")
+            is_compliant = False
+    
+    # Check sections/ directory
+    sections_dir = parts_dir / "sections"
+    sections_prefix = "parts/sections"
     
     # Validate sections/ directory (same logic for both structures)
     if sections_dir.exists():
@@ -538,11 +426,7 @@ def check_introduction_area(repo_root: Path, intro_dir: str, ignore_patterns: Se
         is_compliant = False
 
     # Check for forbidden items directly under introduction root
-    # Adjust allowed items based on structure
-    if new_structure:
-        allowed = {"README.md", f"{intro_dir}.tex", "parts", "build", "refs.bib"}
-    else:
-        allowed = {"README.md", f"{intro_dir}.tex", "sections", "frontmatter", "backmatter", "build", "refs.bib", "appendix"}
+    allowed = {"README.md", f"{intro_dir}.tex", "parts", "build", "refs.bib"}
     
     for item in intro_root.iterdir():
         if item.name.startswith("."):
