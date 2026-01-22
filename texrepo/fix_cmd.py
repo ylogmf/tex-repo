@@ -467,15 +467,18 @@ def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dr
     old_structure_exists = (
         (intro_path / "sections").exists() or 
         (intro_path / "frontmatter").exists() or 
-        (intro_path / "backmatter").exists()
+        (intro_path / "backmatter").exists() or
+        (intro_path / "appendix").exists()
     )
     
     if old_structure_exists:
-        result.add_warning(
-            str(intro_path),
-            "Old structure detected (sections/, frontmatter/ at top level). Only parts/ structure is supported. Migration required."
-        )
-        return
+        print(f"Error: Legacy introduction structure detected in {intro_path}")
+        print("Legacy directories found (sections/, frontmatter/, backmatter/, or appendix/ at top level).")
+        print("Only parts/ structure is supported. No backward compatibility.")
+        print("Remove legacy directories manually and re-run 'tex-repo fix'.")
+
+        import sys
+        sys.exit(1)
     
     # Create new parts/ structure only
     parts_dir = intro_path / "parts"

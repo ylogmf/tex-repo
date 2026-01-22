@@ -324,9 +324,14 @@ def check_introduction_area(repo_root: Path, intro_dir: str, ignore_patterns: Se
         is_compliant = False
 
     # Reject old structure explicitly
-    old_structure_detected = (intro_root / "sections").exists() or (intro_root / "frontmatter").exists()
+    old_structure_detected = (
+        (intro_root / "sections").exists() or 
+        (intro_root / "frontmatter").exists() or
+        (intro_root / "backmatter").exists() or
+        (intro_root / "appendix").exists()
+    )
     if old_structure_detected:
-        messages.append(f"  {format_error(ErrorCode.STRUCTURE_INVALID, 'Old layout structure detected. Only parts/ structure supported. Run tex-repo fix to migrate.', intro_dir)}")
+        messages.append(f"  {format_error(ErrorCode.INVALID_PLACEMENT, 'Legacy structure detected. Only parts/ is supported. Remove legacy dirs manually.', intro_dir)}")
         messages.append("")
         return StatusResult(False, messages)
     

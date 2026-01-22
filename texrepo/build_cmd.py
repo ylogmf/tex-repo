@@ -197,9 +197,9 @@ def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
     cleanup_entries: list[Path] = []
     # Handle introduction book (00_introduction)
     if is_introduction_book(paper_dir):
-        # Generate sections index before building (includes frontmatter, sections, appendix, backmatter)
-        generate_introduction_index(paper_dir)
-        # Note: chapters_index is deprecated - all content now in sections_index
+        # Generate both index files before building
+        generate_introduction_index(paper_dir)  # sections_index.tex with frontmatter/sections/appendix/backmatter
+        generate_chapters_index(paper_dir)  # chapters_index.tex with just chapter.tex includes
         entry = paper_dir / f"{paper_dir.name}.tex"
     else:
         # Regular paper: look for entry file
