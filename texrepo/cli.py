@@ -25,7 +25,7 @@ def create_parser():
         'init',
         help='Initialize a new repository'
     )
-    init_parser.add_argument('name', help='Repository name')
+    init_parser.add_argument('name', help='Repository name or path to text manuscript')
     init_parser.set_defaults(func=cmd_init)
     
     # book command

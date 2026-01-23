@@ -44,7 +44,7 @@ class TestEBook:
             entry_file = book_dir / '00_introduction.tex'
             assert entry_file.exists(), "Missing 00_introduction.tex entry file"
             entry_content = entry_file.read_text()
-            assert r'\documentclass{book}' in entry_content, "Entry should use book documentclass"
+            assert r'\documentclass' in entry_content and 'book' in entry_content, "Entry should use book documentclass"
             assert r'\title{Introduction}' in entry_content, "Entry should have correct title"
             assert r'\frontmatter' in entry_content, "Entry should have frontmatter"
             assert r'\mainmatter' in entry_content, "Entry should have mainmatter"

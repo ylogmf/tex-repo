@@ -39,6 +39,7 @@ class TestAInit:
             # Check shared/ directory and files
             assert (repo_path / 'shared').is_dir(), "Missing shared/ directory"
             assert (repo_path / 'shared' / 'preamble.tex').exists(), "Missing shared/preamble.tex"
+            assert (repo_path / 'shared' / 'packages.tex').exists(), "Missing shared/packages.tex"
             assert (repo_path / 'shared' / 'macros.tex').exists(), "Missing shared/macros.tex"
             assert (repo_path / 'shared' / 'notation.tex').exists(), "Missing shared/notation.tex"
             assert (repo_path / 'shared' / 'identity.tex').exists(), "Missing shared/identity.tex"

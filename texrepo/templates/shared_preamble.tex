@@ -1,0 +1,63 @@
+% ============================================================
+% shared/preamble.tex
+%
+% Central preamble for tex-repo documents.
+% Orchestrates includes in a fixed order.
+% ============================================================
+
+% Load shared package imports first
+\input{../shared/packages.tex}
+
+% ------------------------------------------------------------
+% Typography defaults
+% ------------------------------------------------------------
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.8em}
+\raggedbottom
+
+% ------------------------------------------------------------
+% Headers/footers
+% ------------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\thepage}
+\fancyhead[RO]{\thepage}
+\fancyhead[LO]{\nouppercase{\leftmark}}
+\fancyhead[RE]{\nouppercase{\rightmark}}
+\renewcommand{\headrulewidth}{0pt}
+
+% ------------------------------------------------------------
+% Title spacing
+% ------------------------------------------------------------
+\titlespacing*{\chapter}{0pt}{-10pt}{20pt}
+\titlespacing*{\section}{0pt}{12pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+
+% ------------------------------------------------------------
+% Theorems
+% (chapter-scoped for book; section-scoped fallback for article)
+% ------------------------------------------------------------
+\makeatletter
+\@ifundefined{chapter}{
+  \theoremstyle{definition}
+  \newtheorem{definition}{Definition}[section]
+  \theoremstyle{plain}
+  \newtheorem{theorem}{Theorem}[section]
+  \theoremstyle{remark}
+  \newtheorem{remark}{Remark}[section]
+}{
+  \theoremstyle{definition}
+  \newtheorem{definition}{Definition}[chapter]
+  \theoremstyle{plain}
+  \newtheorem{theorem}{Theorem}[chapter]
+  \theoremstyle{remark}
+  \newtheorem{remark}{Remark}[chapter]
+}
+\makeatother
+
+% ------------------------------------------------------------
+% Load user customizations
+% ------------------------------------------------------------
+\input{../shared/macros.tex}
+\input{../shared/notation.tex}
+\input{../shared/identity.tex}

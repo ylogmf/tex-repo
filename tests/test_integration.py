@@ -162,9 +162,14 @@ class TestChapter:
         result = run_texrepo(['chapter', 'Overview'], cwd=part_dir)
         assert result.returncode == 0, f"chapter failed: {result.stderr}"
         
-        # Chapter is a .tex file, not a directory
-        chapter_file = part_dir / 'chapters' / '01_overview.tex'
-        assert chapter_file.is_file()
+        # Chapter is a directory with chapter.tex and section placeholders
+        chapter_dir = part_dir / 'chapters' / '01_overview'
+        assert chapter_dir.is_dir()
+        assert (chapter_dir / 'chapter.tex').is_file()
+        # Check section placeholders 1-1.tex through 1-10.tex
+        for i in range(1, 11):
+            assert (chapter_dir / f'1-{i}.tex').is_file()
+
     
     def test_chapter_requires_part_context(self, temp_repo):
         """Test that chapter fails outside a part."""
@@ -239,11 +244,14 @@ class TestWorkflow:
         
         # Create chapter
         run_texrepo(['chapter', 'Overview'], cwd=part_dir)
-        # Chapter is a .tex file, not a directory
-        chapter_file = part_dir / 'chapters' / '01_overview.tex'
+        # Chapter is a directory with chapter.tex and section placeholders
+        chapter_dir = part_dir / 'chapters' / '01_overview'
         
         # Verify structure
-        assert chapter_file.is_file()
+        assert chapter_dir.is_dir()
+        assert (chapter_dir / 'chapter.tex').is_file()
+        for i in range(1, 11):
+            assert (chapter_dir / f'1-{i}.tex').is_file()
         
         # Validate
         result = run_texrepo(['status'], cwd=book_dir)

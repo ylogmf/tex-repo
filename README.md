@@ -77,7 +77,12 @@ A tex-repo repository is identified by `.paperrepo` at its root. No global confi
 ```
 .
 ├── .paperrepo
-├── shared/              # Common macros, notation, identity
+├── shared/              # Shared style baseline
+│   ├── packages.tex     # LaTeX package imports
+│   ├── preamble.tex     # Central preamble orchestration
+│   ├── macros.tex       # Custom command definitions
+│   ├── notation.tex     # Mathematical notation shortcuts
+│   └── identity.tex     # Document metadata
 ├── 00_introduction/     # Book-class document
 ├── 01_process_regime/   # Stage directory
 ├── 02_function_application/
@@ -85,6 +90,8 @@ A tex-repo repository is identified by `.paperrepo` at its root. No global confi
 ├── releases/            # Immutable release bundles (tracked)
 └── .gitignore
 ```
+
+**Note:** See [docs/STYLE.md](docs/STYLE.md) for details on the shared style baseline and customization guidance.
 
 ### Book structure
 
@@ -99,7 +106,11 @@ Books use LaTeX `book` class with explicit frontmatter/mainmatter/backmatter sep
 │   │   └── NN_<part_name>/
 │   │       ├── part.tex
 │   │       └── chapters/
-│   │           └── NN_<chapter_name>.tex
+│   │           └── NN_<chapter_name>/
+│   │               ├── chapter.tex        # Chapter prologue
+│   │               ├── 1-1.tex           # Section placeholders
+│   │               ├── 1-2.tex
+│   │               └── ...               # (1-10.tex total)
 │   └── backmatter/
 └── build/                        # Generated indices
     ├── sections_index.tex        # Frontmatter spine
@@ -128,7 +139,29 @@ NN_<paper_name>/
 tex-repo init <name>
 ```
 
-Initialize a new repository with `.paperrepo`, `.gitignore`, `shared/` directory, and stage directories.
+Initialize a new repository with `.paperrepo`, `.gitignore`, `shared/` directory (containing `packages.tex`, `preamble.tex`, `macros.tex`, `notation.tex`, `identity.tex`), and stage directories.
+
+#### Planned: Initialize from text manuscript
+
+**Status: Not yet implemented**
+
+```sh
+tex-repo init manuscript.txt
+```
+
+The planned behavior will allow initialization from a plain text manuscript:
+
+- The first non-empty lines may contain:
+  - Title
+  - Author
+  - Optional metadata (free-form)
+- Remaining content becomes the initial manuscript body
+- Title and author populate `shared/identity.tex`
+- All normal repository scaffolding still occurs (directories, `.paperrepo`, etc.)
+- No LaTeX parsing or interpretation is performed
+- Content is imported only at initialization time
+
+This feature is intended to support rapid prototyping from existing text content.
 
 ### Authoring
 

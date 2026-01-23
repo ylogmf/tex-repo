@@ -50,6 +50,7 @@ def generate_chapters_index(book_root: Path) -> str:
     Generate mainmatter spine (chapters_index.tex).
     
     This file includes all parts and chapters from parts/parts/.
+    For each chapter, includes chapter.tex followed by section placeholders 1-1.tex through 1-10.tex.
     """
     parts_dir = book_root / 'parts' / 'parts'
     if not parts_dir.exists():
@@ -61,8 +62,11 @@ def generate_chapters_index(book_root: Path) -> str:
     parts = get_numbered_dirs(parts_dir)
     
     for part_num, part_slug, part_dir in parts:
+        # Format number as NN
+        part_num_str = f"{part_num:02d}"
+        
         # Include part.tex
-        part_tex_rel = f"parts/parts/{part_num}_{part_slug}/part.tex"
+        part_tex_rel = f"parts/parts/{part_num_str}_{part_slug}/part.tex"
         lines.append(f"\\input{{{part_tex_rel}}}\n")
         
         # Get all chapters in this part
@@ -70,13 +74,22 @@ def generate_chapters_index(book_root: Path) -> str:
         if chapters_dir.exists():
             chapters = get_numbered_dirs(chapters_dir)
             for ch_num, ch_slug, ch_dir in chapters:
+                # Format number as NN
+                ch_num_str = f"{ch_num:02d}"
+                
                 # Include chapter.tex
-                ch_tex_rel = f"parts/parts/{part_num}_{part_slug}/chapters/{ch_num}_{ch_slug}/chapter.tex"
+                ch_tex_rel = f"parts/parts/{part_num_str}_{part_slug}/chapters/{ch_num_str}_{ch_slug}/chapter.tex"
                 lines.append(f"\\input{{{ch_tex_rel}}}\n")
+                
+                # Include section placeholders 1-1.tex through 1-10.tex
+                for i in range(1, 11):
+                    section_rel = f"parts/parts/{part_num_str}_{part_slug}/chapters/{ch_num_str}_{ch_slug}/1-{i}.tex"
+                    lines.append(f"\\input{{{section_rel}}}\n")
         
         lines.append("\n")  # Blank line between parts
     
     return ''.join(lines)
+
 
 
 def build_book(book_root: Path) -> int:

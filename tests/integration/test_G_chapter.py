@@ -43,11 +43,19 @@ class TestGChapter:
             result = run_texrepo(['chapter', 'Overview'], cwd=part_dir)
             assert result.returncode == 0, f"chapter failed: {result.stderr}"
             
-            chapter_file = part_dir / 'chapters' / '01_overview.tex'
+            chapter_dir = part_dir / 'chapters' / '01_overview'
             
-            # Check chapter .tex file exists (not a directory)
-            assert chapter_file.exists(), "Missing chapters/01_overview.tex file"
-            assert chapter_file.is_file(), "Chapter should be a .tex file, not a directory"
+            # Check chapter directory and required files exist
+            assert chapter_dir.exists(), "Missing chapters/01_overview/ directory"
+            assert chapter_dir.is_dir(), "Chapter should be a directory"
+            
+            chapter_file = chapter_dir / 'chapter.tex'
+            assert chapter_file.is_file(), "Missing chapter.tex in chapter directory"
+            
+            # Check section placeholders exist (1-1.tex through 1-10.tex)
+            for i in range(1, 11):
+                section_file = chapter_dir / f'1-{i}.tex'
+                assert section_file.is_file(), f"Missing section placeholder 1-{i}.tex"
             
             # Check chapter content
             chapter_content = chapter_file.read_text()
@@ -80,9 +88,9 @@ class TestGChapter:
             assert result.returncode == 0
             
             chapters_dir = part_dir / 'chapters'
-            assert (chapters_dir / '01_first.tex').exists(), "Should create 01_first.tex"
-            assert (chapters_dir / '02_second.tex').exists(), "Should create 02_second.tex"
-            assert (chapters_dir / '03_third.tex').exists(), "Should create 03_third.tex"
+            assert (chapters_dir / '01_first').is_dir(), "Should create 01_first/ directory"
+            assert (chapters_dir / '02_second').is_dir(), "Should create 02_second/ directory"
+            assert (chapters_dir / '03_third').is_dir(), "Should create 03_third/ directory"
     
     def test_chapter_requires_part_context(self):
         """Test that chapter command must be run inside a part directory."""
@@ -145,8 +153,8 @@ class TestGChapter:
             # Test various title formats
             result = run_texrepo(['chapter', 'Structural Limits'], cwd=part_dir)
             assert result.returncode == 0
-            assert (part_dir / 'chapters' / '01_structural_limits.tex').exists()
+            assert (part_dir / 'chapters' / '01_structural_limits').is_dir()
             
             result = run_texrepo(['chapter', 'In the Beginning'], cwd=part_dir)
             assert result.returncode == 0
-            assert (part_dir / 'chapters' / '02_in_the_beginning.tex').exists()
+            assert (part_dir / 'chapters' / '02_in_the_beginning').is_dir()

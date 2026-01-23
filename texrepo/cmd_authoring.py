@@ -11,12 +11,9 @@ from .utils import (
 
 
 # Book entry template (for 00_introduction)
-BOOK_ENTRY_TEMPLATE = r"""\documentclass{{book}}
+BOOK_ENTRY_TEMPLATE = r"""\documentclass[12pt]{{book}}
 
-\input{{../shared/preamble}}
-\input{{../shared/macros}}
-\input{{../shared/notation}}
-\input{{../shared/identity}}
+\input{{../shared/preamble.tex}}
 
 \title{{{title}}}
 
@@ -25,10 +22,10 @@ BOOK_ENTRY_TEMPLATE = r"""\documentclass{{book}}
 \frontmatter
 \maketitle
 \tableofcontents
-\input{{build/sections_index}}
+\input{{build/sections_index.tex}}
 
 \mainmatter
-\input{{build/chapters_index}}
+\input{{build/chapters_index.tex}}
 
 \backmatter
 % Bibliography, index, etc.
@@ -52,15 +49,16 @@ PART_TEX_TEMPLATE = r"""\part{{{title}}}
 
 CHAPTER_TEX_TEMPLATE = r"""\chapter{{{title}}}
 
-% Chapter content goes here
+% Chapter prologue goes here
+"""
+
+SECTION_PLACEHOLDER_TEMPLATE = r"""% Section placeholder
+
 """
 
 PAPER_ENTRY_TEMPLATE = r"""\documentclass{{article}}
 
-\input{{../shared/preamble}}
-\input{{../shared/macros}}
-\input{{../shared/notation}}
-\input{{../shared/identity}}
+\input{{../shared/preamble.tex}}
 
 \title{{{title}}}
 
@@ -265,7 +263,7 @@ def cmd_chapter(args):
     Create a chapter inside a part.
     
     Must be run inside a part directory.
-    Creates chapters/NN_<slug>.tex file (not a directory).
+    Creates chapters/NN_<slug>/ directory with chapter.tex and section placeholders.
     """
     # Must be inside a part
     part_root = find_part_root()
@@ -282,10 +280,10 @@ def cmd_chapter(args):
     if not chapters_dir.exists():
         ensure_dir(chapters_dir)
     
-    # Check if slug already exists
+    # Check if slug already exists (looking for directories now)
     for item in chapters_dir.iterdir():
-        if item.is_file() and item.suffix == '.tex' and re.match(r'^\d\d_', item.name):
-            existing_slug = item.stem.split('_', 1)[1] if '_' in item.stem else ''
+        if item.is_dir() and re.match(r'^\d\d_', item.name):
+            existing_slug = item.name.split('_', 1)[1] if '_' in item.name else ''
             if existing_slug == slug:
                 print(f"Error: A chapter with slug '{slug}' already exists: {item.name}", file=sys.stderr)
                 return 1
@@ -295,16 +293,24 @@ def cmd_chapter(args):
     if next_num == "00":
         next_num = "01"
     
-    file_name = f"{next_num}_{slug}.tex"
-    chapter_file = chapters_dir / file_name
+    dir_name = f"{next_num}_{slug}"
+    chapter_dir = chapters_dir / dir_name
     
-    if chapter_file.exists():
-        print(f"Error: File '{file_name}' already exists", file=sys.stderr)
+    if chapter_dir.exists():
+        print(f"Error: Directory '{dir_name}' already exists", file=sys.stderr)
         return 1
     
-    # Create chapter .tex file
+    # Create chapter directory structure
+    ensure_dir(chapter_dir)
+    
+    # Create chapter.tex (prologue slot)
     chapter_content = CHAPTER_TEX_TEMPLATE.format(title=title)
-    write_file(chapter_file, chapter_content)
+    write_file(chapter_dir / 'chapter.tex', chapter_content)
+    
+    # Create section placeholders 1-1.tex through 1-10.tex
+    for i in range(1, 11):
+        section_file = chapter_dir / f'1-{i}.tex'
+        write_file(section_file, SECTION_PLACEHOLDER_TEMPLATE)
     
     return 0
 
