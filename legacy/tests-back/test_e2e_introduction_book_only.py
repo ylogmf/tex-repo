@@ -142,10 +142,16 @@ def test_book_only_introduction_workflow(tmp_path):
     assert r'\chapter{' in chapters_content or 'chapter.tex' in chapters_content, \
         f"chapters_index should contain \\chapter command or chapter.tex input, got:\n{chapters_content}"
     
-    # Verify sections_index contains chapter prologue and sections
+    # Verify sections_index is FRONTMATTER-ONLY (no chapter content!)
     sections_content = sections_index.read_text()
-    assert 'chapter.tex' in sections_content, \
-        f"sections_index should include chapter.tex, got:\n{sections_content}"
+    assert 'chapter.tex' not in sections_content, \
+        f"sections_index is frontmatter-only and should NOT include chapter.tex!\nGot:\n{sections_content}"
+    assert 'parts/frontmatter/title' in sections_content, \
+        f"sections_index should include frontmatter files, got:\n{sections_content}"
+    
+    # Verify chapter content IS in chapters_index
+    assert 'chapter.tex' in chapters_content, \
+        f"chapters_index (mainmatter) should include chapter.tex, got:\n{chapters_content}"
     
     # Step 6: Test default part creation (should create 01_part-1 if no --part specified)
     print("Step 6: Test default part creation")

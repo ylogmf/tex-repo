@@ -100,12 +100,21 @@ def test_build_generates_chapter_index(tmp_path):
     assert result.returncode == 0, result.stderr
 
     intro_build = repo_path / "00_introduction" / "build"
+    
+    # Check both index files exist
     sections_index = intro_build / "sections_index.tex"
+    chapters_index = intro_build / "chapters_index.tex"
     assert sections_index.exists()
+    assert chapters_index.exists()
 
-    content = sections_index.read_text()
-    # sections_index now uses parts/parts/<part>/chapters/ structure
-    assert "parts/parts/01_part-1/chapters/01_orientation" in content
+    sections_content = sections_index.read_text()
+    chapters_content = chapters_index.read_text()
+    
+    # sections_index is frontmatter-only (no chapter content)
+    assert "parts/parts/01_part-1/chapters/01_orientation" not in sections_content
+    
+    # chapters_index contains the mainmatter content
+    assert "parts/parts/01_part-1/chapters/01_orientation" in chapters_content
 
 
 def test_status_accepts_book_structure(tmp_path):

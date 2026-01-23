@@ -2,10 +2,13 @@
 Generate index files for the Introduction book.
 
 This module creates:
-- build/chapters_index.tex which includes part.tex and chapter.tex files (structural spine)
-- build/sections_index.tex which includes chapter prologues and section content files (content spine)
+- build/sections_index.tex: FRONTMATTER-ONLY spine (title, preface, TOC)
+- build/chapters_index.tex: MAINMATTER spine (parts, chapters, sections, appendix, backmatter)
 
 The introduction book uses real LaTeX \\part and \\chapter commands.
+
+IMPORTANT: sections_index.tex must NOT contain any sectioning commands or mainmatter content.
+This prevents duplicate TOC entries and wrong numbering (0.1, etc.) in frontmatter.
 """
 from pathlib import Path
 import re
@@ -89,8 +92,14 @@ def generate_chapters_index(intro_dir: Path) -> Path:
     """
     Generate build/chapters_index.tex for the Introduction book.
     
-    This file includes part.tex and chapter.tex files to establish the 
-    structural spine of the book with real \\part and \\chapter commands.
+    This is the MAINMATTER spine. It includes:
+    - part.tex files (\\part commands)
+    - chapter.tex files (\\chapter commands and prologues)
+    - section content files (1-*.tex)
+    - appendix files (\\appendix and content)
+    - backmatter files
+    
+    This file should be included in \\mainmatter.
     
     Args:
         intro_dir: Path to 00_introduction directory
@@ -114,13 +123,17 @@ def generate_chapters_index(intro_dir: Path) -> Path:
     
     # Generate the index file
     lines = []
-    lines.append("% Auto-generated chapter index for Introduction book")
+    lines.append("% Auto-generated mainmatter index for Introduction book")
     lines.append("% DO NOT EDIT - this file is regenerated on each build")
-    lines.append("% Contains structural spine: \\part and \\chapter commands")
+    lines.append("% Contains mainmatter spine: \\part, \\chapter commands, section content, appendix, backmatter")
+    lines.append("% Include this file in \\mainmatter")
     lines.append("")
     
     if not parts_root.exists() or not any(parts_root.iterdir()):
-        # No parts yet - write minimal file
+        # No parts yet - write minimal file with backmatter only
+        for fname in ["scope_limits", "closing_notes"]:
+            lines.append(f"\\input{{parts/backmatter/{fname}}}")
+        lines.append("")
         output_file.write_text('\n'.join(lines) + '\n')
         return output_file
     
@@ -168,127 +181,6 @@ def generate_chapters_index(intro_dir: Path) -> Path:
         
         for chapter_num, chapter_dir in chapters:
             # Include chapter.tex (contains \chapter{...} command and optional prologue)
-            chapter_tex = chapter_dir / "chapter.tex"
-            if chapter_tex.exists():
-                latex_path = f"parts/parts/{part_dir.name}/chapters/{chapter_dir.name}/chapter.tex"
-                lines.append(f"\\input{{{latex_path}}}")
-                lines.append("")
-    
-    # Check for appendix directory
-    if appendix_dir.exists() and appendix_dir.is_dir():
-        # Find all .tex files in appendix directory
-        appendix_files = sorted([f for f in appendix_dir.iterdir() if f.suffix == '.tex' and f.is_file()])
-        
-        if appendix_files:
-            # Add appendix section
-            lines.append("% Appendix section")
-            lines.append("\\appendix")
-            lines.append("")
-            
-            for appendix_file in appendix_files:
-                latex_path = f"parts/appendix/{appendix_file.name}"
-                lines.append(f"\\input{{{latex_path}}}")
-            
-            lines.append("")
-    
-    # Write the file
-    output_file.write_text('\n'.join(lines) + '\n')
-    return output_file
-
-
-def generate_introduction_index(intro_dir: Path) -> Path:
-    r"""
-    Generate build/sections_index.tex for the Introduction book.
-    
-    This is the content spine. It includes:
-    - Frontmatter files
-    - For each chapter: chapter.tex (prologue) followed by section files (1-*.tex)
-    - Appendix files
-    - Backmatter files
-    
-    Args:
-        intro_dir: Path to 00_introduction directory
-        
-    Returns:
-        Path to the generated sections_index.tex file
-        
-    The generated file contains:
-    - Frontmatter includes (title, preface, how_to_read, toc)
-    - For each part/chapter: chapter.tex followed by section files in order
-    - \appendix and appendix includes if parts/appendix/ exists
-    - Backmatter includes (scope_limits, closing_notes)
-    """
-    # Enforce new parts/parts/ structure only - no backward compatibility
-    parts_dir = intro_dir / "parts"
-    parts_root = parts_dir / "parts"
-    appendix_dir = parts_dir / "appendix"
-    
-    if not parts_dir.exists():
-        die(f"Introduction must have parts/ subdirectory at {parts_dir}")
-    
-    build_dir = intro_dir / "build"
-    output_file = build_dir / "sections_index.tex"
-    
-    # Ensure build directory exists
-    build_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Generate the index file header
-    lines = []
-    lines.append("% Auto-generated section index for Introduction book")
-    lines.append("% DO NOT EDIT - this file is regenerated on each build")
-    lines.append("% Contains content spine: chapter prologues and section files")
-    lines.append("")
-    
-    # Include frontmatter at the start
-    for fname in ["title", "preface", "how_to_read", "toc"]:
-        lines.append(f"\\input{{parts/frontmatter/{fname}}}")
-    lines.append("")
-    
-    if not parts_root.exists() or not any(parts_root.iterdir()):
-        # No parts directory - write minimal file with frontmatter/backmatter
-        for fname in ["scope_limits", "closing_notes"]:
-            lines.append(f"\\input{{parts/backmatter/{fname}}}")
-        lines.append("")
-        output_file.write_text('\n'.join(lines) + '\n')
-        return output_file
-    
-    # Find all part folders matching NN_<name>
-    part_pattern = re.compile(r'^(\d{2})_(.+)$')
-    parts = []
-    
-    for item in parts_root.iterdir():
-        if not item.is_dir():
-            continue
-        match = part_pattern.match(item.name)
-        if match:
-            part_num = int(match.group(1))
-            parts.append((part_num, item))
-    
-    # Sort by part number
-    parts.sort(key=lambda x: x[0])
-    
-    for part_num, part_dir in parts:
-        # Find all chapters in this part
-        chapters_dir = part_dir / "chapters"
-        if not chapters_dir.exists():
-            continue
-        
-        chapter_pattern = re.compile(r'^(\d{2})_(.+)$')
-        chapters = []
-        
-        for item in chapters_dir.iterdir():
-            if not item.is_dir():
-                continue
-            match = chapter_pattern.match(item.name)
-            if match:
-                chapter_num = int(match.group(1))
-                chapters.append((chapter_num, item))
-        
-        # Sort by chapter number
-        chapters.sort(key=lambda x: x[0])
-        
-        for chapter_num, chapter_dir in chapters:
-            # Include chapter.tex first (contains \chapter and optional prologue)
             chapter_tex = chapter_dir / "chapter.tex"
             if chapter_tex.exists():
                 latex_path = f"parts/parts/{part_dir.name}/chapters/{chapter_dir.name}/chapter.tex"
@@ -343,3 +235,115 @@ def generate_introduction_index(intro_dir: Path) -> Path:
     # Write the file
     output_file.write_text('\n'.join(lines) + '\n')
     return output_file
+
+
+def generate_introduction_index(intro_dir: Path) -> Path:
+    r"""
+    Generate build/sections_index.tex for the Introduction book.
+    
+    This is the FRONTMATTER-ONLY spine. It includes ONLY:
+    - Frontmatter navigation files (title, preface, how_to_read, toc)
+    - NO chapter.tex files (those contain \chapter commands - mainmatter only!)
+    - NO section content files (mainmatter only!)
+    - NO appendix (mainmatter only!)
+    - NO backmatter (moved to chapters_index.tex)
+    
+    This file should be included in \frontmatter.
+    All mainmatter content (parts, chapters, sections, appendix, backmatter) 
+    is in chapters_index.tex.
+    
+    Args:
+        intro_dir: Path to 00_introduction directory
+        
+    Returns:
+        Path to the generated sections_index.tex file
+    """
+    # Enforce new parts/parts/ structure only - no backward compatibility
+    parts_dir = intro_dir / "parts"
+    
+    if not parts_dir.exists():
+        die(f"Introduction must have parts/ subdirectory at {parts_dir}")
+    
+    build_dir = intro_dir / "build"
+    output_file = build_dir / "sections_index.tex"
+    
+    # Ensure build directory exists
+    build_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate the index file header
+    lines = []
+    lines.append("% Auto-generated frontmatter index for Introduction book")
+    lines.append("% DO NOT EDIT - this file is regenerated on each build")
+    lines.append("% Contains FRONTMATTER-ONLY: navigation pages (TOC, etc.)")
+    lines.append("% NO chapters, sections, appendix, or backmatter here - those are in chapters_index.tex")
+    lines.append("% Include this file in \\frontmatter")
+    lines.append("")
+    
+    # Include ONLY frontmatter navigation files
+    # These should NOT contain any \chapter, \section, or other sectioning commands
+    for fname in ["title", "preface", "how_to_read", "toc"]:
+        lines.append(f"\\input{{parts/frontmatter/{fname}}}")
+    lines.append("")
+    
+    # Write the file
+    content = '\n'.join(lines) + '\n'
+    output_file.write_text(content)
+    
+    # VALIDATION: Ensure no forbidden sectioning commands in generated file
+    _validate_frontmatter_only(output_file, content)
+    
+    return output_file
+
+
+def _validate_frontmatter_only(filepath: Path, content: str) -> None:
+    """
+    Validate that sections_index.tex contains NO sectioning commands.
+    
+    This is a guardrail to prevent mainmatter content from leaking into frontmatter,
+    which would cause duplicate TOC entries and wrong numbering (0.1, etc.).
+    
+    Args:
+        filepath: Path to sections_index.tex for error messages
+        content: Content of the file to validate
+        
+    Raises:
+        SystemExit: If validation fails
+    """
+    # Forbidden sectioning commands that should never appear in frontmatter spine
+    forbidden_commands = [
+        r'\part{', r'\part[',
+        r'\chapter{', r'\chapter[', r'\chapter*{',
+        r'\section{', r'\section[', r'\section*{',
+        r'\subsection{', r'\subsection[', r'\subsection*{',
+        r'\subsubsection{', r'\subsubsection[', r'\subsubsection*{',
+        r'\paragraph{', r'\paragraph[', r'\paragraph*{',
+        r'\subparagraph{', r'\subparagraph[', r'\subparagraph*{',
+        r'\appendix'
+    ]
+    
+    errors = []
+    for cmd in forbidden_commands:
+        if cmd in content:
+            errors.append(f"  - Found forbidden command: {cmd}")
+    
+    # Check for \input or \include of chapter/section content
+    # Frontmatter should only include parts/frontmatter/* files
+    input_pattern = re.compile(r'\\(?:input|include)\{([^}]+)\}')
+    for match in input_pattern.finditer(content):
+        path = match.group(1)
+        # Allow only parts/frontmatter/* includes
+        if not path.startswith('parts/frontmatter/'):
+            errors.append(f"  - Found forbidden include: \\input{{{path}}} (only parts/frontmatter/* allowed)")
+    
+    # Check for \numberline in TOC (indicates numbered chapters/sections in frontmatter)
+    if r'\numberline' in content:
+        errors.append(f"  - Found \\numberline in TOC (indicates mainmatter content in frontmatter)")
+    
+    if errors:
+        error_msg = f"\nERROR: {filepath} validation failed!\n"
+        error_msg += "Frontmatter spine (sections_index.tex) must NOT contain mainmatter content.\n"
+        error_msg += "This causes duplicate TOC entries and wrong numbering (0.1, etc.)\n\n"
+        error_msg += "Violations found:\n"
+        error_msg += '\n'.join(errors)
+        error_msg += "\n\nAll chapters, sections, appendix, and backmatter belong in chapters_index.tex (mainmatter spine).\n"
+        die(error_msg)

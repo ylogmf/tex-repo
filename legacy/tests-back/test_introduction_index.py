@@ -77,26 +77,27 @@ class TestIntroductionIndexWithPartChapter:
         for i in range(1, 11):
             (chapter_dir / f"1-{i}.tex").write_text(f"\\section{{Section {i}}}\n% Content\n")
         
-        # Generate sections_index (content spine)
+        # Generate sections_index (FRONTMATTER-ONLY spine)
         output = generate_introduction_index(intro_dir)
         
         assert output.exists()
         content = output.read_text()
         
-        # Check that chapter.tex is included (which contains \chapter command)
-        assert "01_basic_concepts/chapter.tex" in content
+        # sections_index.tex should be frontmatter-only (no chapter/section content!)
+        assert "01_basic_concepts/chapter.tex" not in content
+        assert "1-1.tex" not in content
         
-        # Check section file includes
-        for i in range(1, 11):
-            assert f"01_basic_concepts/1-{i}.tex" in content
-        
-        # Generate chapters_index (structural spine)
+        # Generate chapters_index (MAINMATTER spine with all content)
         chapters_output = generate_chapters_index(intro_dir)
         chapters_content = chapters_output.read_text()
         
-        # Check that part.tex and chapter.tex are included
+        # Check that part.tex and chapter.tex are included in chapters_index
         assert "01_foundations/part.tex" in chapters_content
         assert "01_basic_concepts/chapter.tex" in chapters_content
+        
+        # Check section file includes are in chapters_index
+        for i in range(1, 11):
+            assert f"01_basic_concepts/1-{i}.tex" in chapters_content
     
     def test_multiple_parts_ordered(self, tmp_path):
         """Test generation with multiple parts in correct order."""
@@ -224,19 +225,28 @@ class TestAppendixSupport:
         (appendix_dir / "01_notation.tex").write_text("% Notation")
         (appendix_dir / "02_proofs.tex").write_text("% Proofs")
         
-        output = generate_introduction_index(intro_dir)
-        content = output.read_text()
+        # sections_index.tex is frontmatter-only - appendix goes in chapters_index
+        sections_output = generate_introduction_index(intro_dir)
+        sections_content = sections_output.read_text()
         
-        # Should contain \appendix
-        assert "\\appendix" in content
+        # sections_index should NOT contain appendix
+        assert "\\appendix" not in sections_content
+        assert "parts/appendix/" not in sections_content
         
-        # Should contain appendix includes
-        assert "\\input{parts/appendix/01_notation.tex}" in content
-        assert "\\input{parts/appendix/02_proofs.tex}" in content
+        # Generate chapters_index which should contain the appendix
+        chapters_output = generate_chapters_index(intro_dir)
+        chapters_content = chapters_output.read_text()
         
-        # Appendix should come after chapters
-        chapter_pos = content.find("01_intro/chapter.tex")
-        appendix_pos = content.find("\\appendix")
+        # Should contain \appendix in chapters_index
+        assert "\\appendix" in chapters_content
+        
+        # Should contain appendix includes in chapters_index
+        assert "\\input{parts/appendix/01_notation.tex}" in chapters_content
+        assert "\\input{parts/appendix/02_proofs.tex}" in chapters_content
+        
+        # Appendix should come after chapters in chapters_index
+        chapter_pos = chapters_content.find("01_intro/chapter.tex")
+        appendix_pos = chapters_content.find("\\appendix")
         assert chapter_pos < appendix_pos
 
 

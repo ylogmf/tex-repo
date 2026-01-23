@@ -549,23 +549,31 @@ class TestBuildCommand:
         result = run_texrepo(["b", "00_introduction"], cwd=repo_path)
         assert result.returncode == 0, f"build failed: {result.stdout}\n{result.stderr}"
         
-        # Check that sections_index.tex was generated
-        index_file = repo_path / "00_introduction" / "build" / "sections_index.tex"
-        assert index_file.exists(), "sections_index.tex should be generated"
+        # Check that both index files were generated
+        sections_index_file = repo_path / "00_introduction" / "build" / "sections_index.tex"
+        chapters_index_file = repo_path / "00_introduction" / "build" / "chapters_index.tex"
+        assert sections_index_file.exists(), "sections_index.tex should be generated"
+        assert chapters_index_file.exists(), "chapters_index.tex should be generated"
         
-        index_content = index_file.read_text()
+        sections_content = sections_index_file.read_text()
+        chapters_content = chapters_index_file.read_text()
         
-        # Check that both chapters are included with proper paths (new Part/Chapter structure)
-        # sections_index.tex now contains chapter.tex and section files, not \chapter commands
-        assert "parts/parts/01_part-1/chapters/01_foundations" in index_content
-        assert "parts/parts/01_part-1/chapters/02_applications" in index_content
-        foundations_pos = index_content.find("01_foundations")
-        applications_pos = index_content.find("02_applications")
+        # sections_index.tex is frontmatter-only (no chapter content)
+        assert "parts/parts/01_part-1/chapters" not in sections_content, \
+            "sections_index.tex is frontmatter-only and should NOT contain chapter paths"
+        assert "parts/frontmatter/title" in sections_content, \
+            "sections_index.tex should contain frontmatter"
+        
+        # chapters_index.tex contains all mainmatter content
+        assert "parts/parts/01_part-1/chapters/01_foundations" in chapters_content
+        assert "parts/parts/01_part-1/chapters/02_applications" in chapters_content
+        foundations_pos = chapters_content.find("01_foundations")
+        applications_pos = chapters_content.find("02_applications")
         assert foundations_pos < applications_pos, "Chapters should be in numeric order"
         
-        # Check that section files are included with new parts/parts/<part>/chapters/ prefix
-        assert r"\input{parts/parts/01_part-1/chapters/01_foundations/1-1.tex}" in index_content
-        assert r"\input{parts/parts/01_part-1/chapters/02_applications/2-1.tex}" in index_content
+        # Check that section files are included in chapters_index with new paths
+        assert r"\input{parts/parts/01_part-1/chapters/01_foundations/1-1.tex}" in chapters_content
+        assert r"\input{parts/parts/01_part-1/chapters/02_applications/2-1.tex}" in chapters_content
         
         # Verify PDF was created
         pdf_path = repo_path / "00_introduction" / "build" / "00_introduction.pdf"

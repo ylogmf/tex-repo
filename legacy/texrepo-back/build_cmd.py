@@ -198,8 +198,8 @@ def build_single_paper(paper_dir: Path, repo_root: Path, args) -> None:
     # Handle introduction book (00_introduction)
     if is_introduction_book(paper_dir):
         # Generate both index files before building
-        generate_introduction_index(paper_dir)  # sections_index.tex with frontmatter/sections/appendix/backmatter
-        generate_chapters_index(paper_dir)  # chapters_index.tex with just chapter.tex includes
+        generate_introduction_index(paper_dir)  # sections_index.tex: frontmatter-only (title, preface, TOC)
+        generate_chapters_index(paper_dir)  # chapters_index.tex: mainmatter (parts, chapters, sections, appendix, backmatter)
         entry = paper_dir / f"{paper_dir.name}.tex"
     else:
         # Regular paper: look for entry file

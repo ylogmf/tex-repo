@@ -225,3 +225,85 @@ def cmd_np(args) -> int:
 
     print(f"✅ New paper: {paper_rel}")
     return 0
+
+
+# New simplified paper command for top-level papers
+SIMPLE_PAPER_TEMPLATE = r"""\documentclass[11pt,letterpaper]{{article}}
+
+\input{{{shared_rel}/preamble.tex}}
+
+\title{{{title}}}
+\author{{}}
+\date{{}}
+
+\begin{{document}}
+
+\maketitle
+
+\begin{{abstract}}
+Write your abstract here.
+\end{{abstract}}
+
+\section{{Introduction}}
+
+Content goes here.
+
+\section{{Main Results}}
+
+Content goes here.
+
+\section{{Conclusion}}
+
+Content goes here.
+
+\bibliographystyle{{plain}}
+\bibliography{{references}}
+
+\end{{document}}
+"""
+
+
+def cmd_paper(args) -> int:
+    """Create a new top-level paper at the repository root."""
+    repo_root = find_repo_root()
+    
+    # Must run from repo root
+    if Path.cwd().resolve() != repo_root:
+        die("Must run 'tex-repo paper' from repository root")
+    
+    # Get next prefix for the paper
+    from .common import next_prefix
+    prefix = next_prefix(repo_root)
+    title = args.title
+    
+    # Create slug from title
+    import re
+    slug = re.sub(r'[^a-z0-9]+', '_', title.lower()).strip('_')
+    
+    paper_dir = repo_root / f"{prefix}_{slug}"
+    if paper_dir.exists():
+        die(f"Paper directory already exists: {paper_dir.relative_to(repo_root)}")
+    
+    # Create paper structure
+    paper_dir.mkdir(parents=True)
+    
+    # Create main .tex file (article class)
+    paper_name = "paper"
+    entry_tex = paper_dir / f"{paper_name}.tex"
+    
+    # Calculate relative path to shared/
+    shared_rel = relpath_to_shared(repo_root, paper_dir)
+    
+    write_text(entry_tex, SIMPLE_PAPER_TEMPLATE.format(title=title, shared_rel=shared_rel))
+    
+    # Create README.md
+    readme = paper_dir / "README.md"
+    write_text(readme, f"# {title}\n\nArticle-class paper in tex-repo.\n")
+    
+    # Create empty references.bib
+    bib = paper_dir / "references.bib"
+    write_text(bib, "% BibTeX references\n")
+    
+    print(f"✅ Created paper: {paper_dir.relative_to(repo_root)}")
+    print(f"   Entry file: {entry_tex.relative_to(repo_root)}")
+    return 0

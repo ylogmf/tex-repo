@@ -99,10 +99,8 @@ class TextInitHardeningTests(unittest.TestCase):
                 0,
                 f"Help should succeed anywhere. stdout={result.stdout} stderr={result.stderr}",
             )
-            self.assertIn("target", combined, "Help output should mention target argument")
-            self.assertIn(
-                "legacy-seed-text", combined, "Help output should mention legacy-seed-text flag"
-            )
+            self.assertIn("name", combined, "Help output should mention name argument")
+            # legacy-seed-text flag removed in new simplified init
 
 
 if __name__ == "__main__":

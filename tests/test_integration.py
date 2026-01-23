@@ -1,207 +1,250 @@
-#!/usr/bin/env python3
-"""
-Simple integration test for tex-repo
-Tests the CLI functionality by running the script directly
-"""
-import subprocess
+"""Integration tests for tex-repo commands."""
+
+import pytest
 import tempfile
-import os
+import shutil
 from pathlib import Path
+import subprocess
+import sys
 
 
-def run_texrepo(args, input_text=None, cwd=None):
-    """Run tex-repo command and return result"""
-    repo_root = Path(__file__).parent.parent
-    script_path = repo_root / 'tex-repo'
+@pytest.fixture
+def temp_repo():
+    """Create a temporary directory for testing."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)
+
+
+def run_texrepo(args, cwd=None):
+    """Run tex-repo command and return result."""
+    cmd = [sys.executable, '-m', 'texrepo'] + args
+    result = subprocess.run(
+        cmd,
+        cwd=cwd,
+        capture_output=True,
+        text=True
+    )
+    return result
+
+
+class TestInit:
+    """Test init command."""
     
-    cmd = [str(script_path)] + args
+    def test_init_creates_structure(self, temp_repo):
+        """Test that init creates all required files and directories."""
+        repo_name = 'test-repo'
+        result = run_texrepo(['init', repo_name], cwd=temp_repo)
+        
+        assert result.returncode == 0, f"init failed: {result.stderr}"
+        
+        repo_dir = temp_repo / repo_name
+        assert repo_dir.exists()
+        assert (repo_dir / '.paperrepo').exists()
+        assert (repo_dir / 'shared').is_dir()
+        assert (repo_dir / 'shared' / 'preamble.tex').exists()
+        assert (repo_dir / 'shared' / 'macros.tex').exists()
+        assert (repo_dir / 'shared' / 'notation.tex').exists()
+        assert (repo_dir / 'shared' / 'identity.tex').exists()
+        # Stage directories (not including 00_introduction which is created by book command)
+        assert (repo_dir / '01_process_regime').is_dir()
+        assert (repo_dir / '02_function_application').is_dir()
+        assert (repo_dir / '03_hypophysis').is_dir()
+        assert (repo_dir / 'releases').is_dir()
+        assert (repo_dir / '.gitignore').exists()
     
-    try:
-        result = subprocess.run(
-            cmd, 
-            input=input_text,
-            text=True,
-            capture_output=True,
-            cwd=cwd or os.getcwd(),
-            timeout=30
-        )
-        return result
-    except subprocess.TimeoutExpired:
-        print(f"Command timed out: {' '.join(cmd)}")
-        raise
+    def test_init_rejects_existing_directory(self, temp_repo):
+        """Test that init fails if directory already exists."""
+        repo_name = 'test-repo'
+        (temp_repo / repo_name).mkdir()
+        
+        result = run_texrepo(['init', repo_name], cwd=temp_repo)
+        assert result.returncode != 0
 
 
-def test_basic_workflow():
-    """Test basic tex-repo workflow"""
-    print("🧪 Testing basic tex-repo workflow...")
+class TestBook:
+    """Test book command."""
     
-    with tempfile.TemporaryDirectory() as temp_dir:
-        os.chdir(temp_dir)
+    def test_book_creates_structure(self, temp_repo):
+        """Test that book creates complete book structure."""
+        # Initialize repo first
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
         
-        # Test help command
-        print("📖 Testing help command...")
-        result = run_texrepo(['--help'])
-        assert result.returncode == 0, "Help should work"
-        assert 'tex-repo' in result.stdout, "Help should mention tex-repo"
-        print("✅ Help command works")
+        # Create book
+        result = run_texrepo(['book', 'Introduction'], cwd=repo_dir)
+        assert result.returncode == 0, f"book failed: {result.stderr}"
         
-        # Test init with minimal input
-        print("🏗️  Testing repository initialization...")
-        init_input = "\n".join([
-            "Test Project",      # project_name
-            "Test Author",       # author_name  
-            "Test Org",          # organization
-            "test@test.com",     # author_email
-            "",                  # use default affiliation
-            "TestOrg",           # short_affiliation
-            "",                  # no ORCID
-            "MIT",               # license
-            "today",             # date_policy
-            "plain"              # bibliography_style
-        ]) + "\n"
-        
-        result = run_texrepo(['init', 'test-repo'], input_text=init_input)
-        assert result.returncode == 0, f"Init failed: {result.stderr}"
-        
-        repo_path = Path('test-repo')
-        assert repo_path.exists(), "Repository directory should exist"
-        assert (repo_path / '.paperrepo').exists(), ".paperrepo should exist"
-        # Check new layout directories (canonical per README)
-        assert (repo_path / '00_introduction').exists(), "Introduction directory should exist"
-        assert (repo_path / '01_process_regime').exists(), "Process regime directory should exist"
-        assert (repo_path / '02_function_application').exists(), "Function application directory should exist"
-        assert (repo_path / '03_hypnosis').exists(), "Hypnosis directory should exist"
-        # New layout does not have 00_world - check shared files instead
-        assert (repo_path / 'shared').exists(), "Shared directory should exist"
-        assert (repo_path / 'shared' / 'preamble.tex').exists(), "Shared preamble should exist"
-        print("✅ Repository initialization works")
-        
-        # Enter the repository
-        os.chdir('test-repo')
-        
-        # Test status command
-        print("📊 Testing status command...")
-        result = run_texrepo(['status'], cwd='.')
-        assert result.returncode == 0, "Status should work"
-        print("✅ Status command works")
-        
-        # Test domain command  
-        print("📁 Testing domain creation...")
-        result = run_texrepo(['nd', '02_function_application/function', 'computer-vision'], cwd='.')
-        assert result.returncode == 0, f"Domain creation should work: {result.stderr}"
-        assert Path('02_function_application/function/papers/00_computer-vision').exists(), "Domain directory should exist"
-        assert (Path('02_function_application/function/papers/00_computer-vision/README.md')).exists(), "Domain README should be created"
-        print("✅ Domain creation works")
-
-        # Test process/regime paper creation with auto papers/ insertion
-        print("🌊 Testing process/regime paper creation...")
-        result = run_texrepo(['np', '01_process_regime/process/black-hole'], cwd='.')
-        assert result.returncode == 0, f"Process paper creation failed: {result.stderr}"
-        process_paper = Path('01_process_regime/process/papers/black-hole')
-        assert process_paper.exists(), "Process paper directory should exist"
-        assert (process_paper / 'black-hole.tex').exists(), "Process entry file should match folder"
-        print("✅ Process/regime paper creation works")
-        
-        # Test new paper creation (in hypnosis stage - paper-scale)
-        print("📄 Testing paper creation...")
-        result = run_texrepo(['np', '03_hypnosis', 'test-paper', 'My Test Paper'], cwd='.')
-        assert result.returncode == 0, f"Paper creation failed: {result.stderr}"
-        
-        paper_path = Path('03_hypnosis/papers/test-paper')
-        assert paper_path.exists(), "Paper directory should exist"
-        assert (paper_path / 'test-paper.tex').exists(), "Entry file should exist"
-        assert not (paper_path / 'main.tex').exists(), "Legacy main.tex should not be created"
-        assert (paper_path / 'README.md').exists(), "Paper README should exist"
-        print("✅ Paper creation works")
-        
-        # Test config command
-        print("⚙️  Testing config command...")
-        result = run_texrepo(['config'], cwd='.')
-        assert result.returncode == 0, "Config should work"
-        assert Path('.texrepo-config').exists(), "Config file should be created"
-        print("✅ Config command works")
-        
-        # Test final status
-        print("📊 Testing final status...")
-        result = run_texrepo(['status'], cwd='.')
-        print(f"Status command return code: {result.returncode}")
-        print(f"Status stdout: {result.stdout[:200]}...")
-        print(f"Status stderr: {result.stderr}")
-        # Status command may return 1 for warnings, which is still success
-        assert result.returncode in [0, 1], f"Final status should work: return code {result.returncode}"
-        print("✅ Final status works")
-        
-        print("\n🎉 Basic workflow test passed!")
-        return True
-
-
-def test_error_conditions():
-    """Test error handling"""
-    print("🧪 Testing error conditions...")
+        book_dir = repo_dir / '00_introduction'
+        assert book_dir.exists()
+        assert (book_dir / '00_introduction.tex').exists()
+        assert (book_dir / 'build').is_dir()
+        assert (book_dir / 'parts' / 'frontmatter').is_dir()
+        assert (book_dir / 'parts' / 'parts').is_dir()
+        assert (book_dir / 'parts' / 'backmatter').is_dir()
+        assert (book_dir / 'build' / 'sections_index.tex').exists()
+        assert (book_dir / 'build' / 'chapters_index.tex').exists()
     
-    with tempfile.TemporaryDirectory() as temp_dir:
-        os.chdir(temp_dir)
+    def test_book_auto_numbering(self, temp_repo):
+        """Test that books are auto-numbered."""
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
         
-        # Test commands outside repository
-        print("⚠️  Testing commands outside repository...")
-        result = run_texrepo(['status'])
-        assert result.returncode != 0, "Status should fail outside repository"
-        print("✅ Commands properly fail outside repository")
+        # First book (not Introduction) should be 04_ (after stage dirs 01,02,03)
+        run_texrepo(['book', 'First'], cwd=repo_dir)
+        assert (repo_dir / '04_first').exists()
         
-        # Initialize a repository first
-        init_input = "\n" * 10  # Use all defaults
-        result = run_texrepo(['init', 'error-test'], input_text=init_input)
-        assert result.returncode == 0, "Init should work"
-        
-        os.chdir('error-test')
-        
-        # Test invalid domain
-        print("⚠️  Testing invalid domain access...")
-        result = run_texrepo(['np', '02_process_regime', 'test-paper'], cwd='.')
-        assert result.returncode != 0, "Should fail with invalid domain"
-        print("✅ Invalid domain properly rejected")
-        
-        # Create a paper first
-        result = run_texrepo(['np', '03_hypnosis', 'test-paper', 'Test Paper'], cwd='.')
-        assert result.returncode == 0, f"Paper creation should work: {result.stderr}"
-        
-        # Test duplicate paper
-        print("⚠️  Testing duplicate paper creation...")
-        result = run_texrepo(['np', '03_hypnosis', 'test-paper', 'Duplicate Paper'], cwd='.')
-        assert result.returncode != 0, "Should fail with duplicate paper"
-        print("✅ Duplicate paper properly rejected")
-        
-        print("\n🎉 Error condition tests passed!")
-        return True
+        # Second book should be 05_
+        run_texrepo(['book', 'Second'], cwd=repo_dir)
+        assert (repo_dir / '05_second').exists()
 
 
-def main():
-    """Run all integration tests"""
-    print("🚀 Running tex-repo integration tests...")
+class TestPaper:
+    """Test paper command."""
     
-    original_cwd = os.getcwd()
+    def test_paper_creates_structure(self, temp_repo):
+        """Test that paper creates complete paper structure."""
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
+        
+        result = run_texrepo(['paper', 'Test Paper'], cwd=repo_dir)
+        assert result.returncode == 0, f"paper failed: {result.stderr}"
+        
+        # Papers numbered after stage dirs (01,02,03), so first paper is 04
+        paper_dir = repo_dir / '04_test_paper'
+        assert paper_dir.exists()
+        # Entry file matches directory name
+        assert (paper_dir / '04_test_paper.tex').exists()
+        assert (paper_dir / 'sections').is_dir()
+        assert (paper_dir / 'build').is_dir()
+        assert (paper_dir / 'refs.bib').exists()
+
+
+class TestPart:
+    """Test part command."""
     
-    try:
-        success = True
-        success &= test_basic_workflow()
-        success &= test_error_conditions()
+    def test_part_creates_structure(self, temp_repo):
+        """Test that part creates complete part structure."""
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
+        run_texrepo(['book', 'Introduction'], cwd=repo_dir)
         
-        if success:
-            print("\n🎉 All integration tests passed!")
-            return 0
-        else:
-            print("\n❌ Some integration tests failed!")
-            return 1
-            
-    except Exception as e:
-        print(f"\n💥 Test error: {e}")
-        import traceback
-        traceback.print_exc()
-        return 1
+        book_dir = repo_dir / '00_introduction'
+        result = run_texrepo(['part', 'Foundations'], cwd=book_dir)
+        assert result.returncode == 0, f"part failed: {result.stderr}"
         
-    finally:
-        os.chdir(original_cwd)
+        part_dir = book_dir / 'parts' / 'parts' / '01_foundations'
+        assert part_dir.exists()
+        assert (part_dir / 'part.tex').exists()
+        assert (part_dir / 'chapters').is_dir()
+    
+    def test_part_requires_book_context(self, temp_repo):
+        """Test that part fails outside a book."""
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
+        
+        result = run_texrepo(['part', 'Foundations'], cwd=repo_dir)
+        assert result.returncode != 0
 
 
-if __name__ == '__main__':
-    exit(main())
+class TestChapter:
+    """Test chapter command."""
+    
+    def test_chapter_creates_structure(self, temp_repo):
+        """Test that chapter creates complete chapter structure."""
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
+        run_texrepo(['book', 'Introduction'], cwd=repo_dir)
+        
+        book_dir = repo_dir / '00_introduction'
+        run_texrepo(['part', 'Foundations'], cwd=book_dir)
+        
+        part_dir = book_dir / 'parts' / 'parts' / '01_foundations'
+        result = run_texrepo(['chapter', 'Overview'], cwd=part_dir)
+        assert result.returncode == 0, f"chapter failed: {result.stderr}"
+        
+        # Chapter is a .tex file, not a directory
+        chapter_file = part_dir / 'chapters' / '01_overview.tex'
+        assert chapter_file.is_file()
+    
+    def test_chapter_requires_part_context(self, temp_repo):
+        """Test that chapter fails outside a part."""
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
+        run_texrepo(['book', 'Introduction'], cwd=repo_dir)
+        
+        book_dir = repo_dir / '00_introduction'
+        result = run_texrepo(['chapter', 'Overview'], cwd=book_dir)
+        assert result.returncode != 0
+
+
+class TestValidation:
+    """Test validation commands."""
+    
+    def test_status_on_valid_repo(self, temp_repo):
+        """Test that status passes on a valid repository."""
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
+        run_texrepo(['book', 'Introduction'], cwd=repo_dir)
+        
+        book_dir = repo_dir / '00_introduction'
+        result = run_texrepo(['status'], cwd=book_dir)
+        assert result.returncode == 0
+        assert 'no violations' in result.stdout.lower()
+    
+    def test_guard_fails_on_violations(self, temp_repo):
+        """Test that guard exits non-zero on violations."""
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
+        run_texrepo(['book', 'Introduction'], cwd=repo_dir)
+        
+        # Remove required directory to create violation
+        book_dir = repo_dir / '00_introduction'
+        shutil.rmtree(book_dir / 'parts' / 'frontmatter')
+        
+        result = run_texrepo(['guard'], cwd=book_dir)
+        assert result.returncode != 0
+        assert 'BOOK_FRONTMATTER_DIR_MISSING' in result.stdout
+    
+    def test_fix_creates_missing_files(self, temp_repo):
+        """Test that fix creates missing required files."""
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
+        run_texrepo(['book', 'Introduction'], cwd=repo_dir)
+        
+        book_dir = repo_dir / '00_introduction'
+        # Remove spine file
+        (book_dir / 'build' / 'sections_index.tex').unlink()
+        
+        result = run_texrepo(['fix'], cwd=book_dir)
+        assert result.returncode == 0
+        assert (book_dir / 'build' / 'sections_index.tex').exists()
+
+
+class TestWorkflow:
+    """Test complete workflows."""
+    
+    def test_full_book_workflow(self, temp_repo):
+        """Test complete book creation workflow."""
+        # Init
+        run_texrepo(['init', 'test-repo'], cwd=temp_repo)
+        repo_dir = temp_repo / 'test-repo'
+        
+        # Create book
+        run_texrepo(['book', 'Introduction'], cwd=repo_dir)
+        book_dir = repo_dir / '00_introduction'
+        
+        # Create part
+        run_texrepo(['part', 'Foundations'], cwd=book_dir)
+        part_dir = book_dir / 'parts' / 'parts' / '01_foundations'
+        
+        # Create chapter
+        run_texrepo(['chapter', 'Overview'], cwd=part_dir)
+        # Chapter is a .tex file, not a directory
+        chapter_file = part_dir / 'chapters' / '01_overview.tex'
+        
+        # Verify structure
+        assert chapter_file.is_file()
+        
+        # Validate
+        result = run_texrepo(['status'], cwd=book_dir)
+        assert result.returncode == 0
