@@ -53,7 +53,8 @@ def test_init_scaffolds_book_structure(tmp_path):
     intro = repo_path / "00_introduction"
     assert (intro / "00_introduction.tex").exists()
     parts = intro / "parts"
-    for d in ["frontmatter", "backmatter", "sections", "appendix"]:
+    # New Part/Chapter structure has parts/parts/ instead of parts/sections/
+    for d in ["frontmatter", "backmatter", "parts", "appendix"]:
         assert (parts / d).is_dir()
     assert (intro / "build").is_dir()
     for fname in ["title.tex", "preface.tex", "how_to_read.tex", "toc.tex"]:
@@ -72,16 +73,17 @@ def test_ns_creates_chapter_structure(tmp_path):
     )
 
     run_texrepo(["ns", "orientation"], cwd=repo_path, check=True)
-    chapter_dir = repo_path / "00_introduction" / "parts" / "sections" / "01_orientation"
+    # New structure: parts/parts/<part>/chapters/<chapter>/
+    chapter_dir = repo_path / "00_introduction" / "parts" / "parts" / "01_part-1" / "chapters" / "01_orientation"
     assert chapter_dir.is_dir()
     assert (chapter_dir / "chapter.tex").exists()
-    # Subsections
+    # Section files (10 per chapter)
     for i in range(1, 11):
         assert (chapter_dir / f"1-{i}.tex").exists()
 
     chapter_content = (chapter_dir / "chapter.tex").read_text()
-    assert "\\input{parts/sections/01_orientation/1-1.tex}" in chapter_content
-    assert chapter_content.find("1-1.tex") < chapter_content.find("1-2.tex")
+    # Chapter.tex now contains \chapter command, not \input statements
+    assert "\\chapter" in chapter_content
 
 
 def test_build_generates_chapter_index(tmp_path):
@@ -102,8 +104,8 @@ def test_build_generates_chapter_index(tmp_path):
     assert sections_index.exists()
 
     content = sections_index.read_text()
-    # sections_index now includes all content (frontmatter, sections, appendix, backmatter)
-    assert "parts/sections/01_orientation" in content
+    # sections_index now uses parts/parts/<part>/chapters/ structure
+    assert "parts/parts/01_part-1/chapters/01_orientation" in content
 
 
 def test_status_accepts_book_structure(tmp_path):

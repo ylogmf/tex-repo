@@ -301,8 +301,8 @@ def _parse_section_dirname(name: str) -> int | None:
 
 
 def check_introduction_area(repo_root: Path, intro_dir: str, ignore_patterns: Set[str]) -> StatusResult:
-    """Validate introduction as book-scale with frontmatter/backmatter and chapter structure."""
-    messages = [f"🔍 Checking {intro_dir} (book-scale)..."]
+    """Validate introduction as book-scale with Part/Chapter structure."""
+    messages = [f"🔍 Checking {intro_dir} (book-scale with Part/Chapter structure)..."]
     is_compliant = True
     intro_root = repo_root / intro_dir
 
@@ -328,10 +328,11 @@ def check_introduction_area(repo_root: Path, intro_dir: str, ignore_patterns: Se
         (intro_root / "sections").exists() or 
         (intro_root / "frontmatter").exists() or
         (intro_root / "backmatter").exists() or
-        (intro_root / "appendix").exists()
+        (intro_root / "appendix").exists() or
+        (intro_root / "parts" / "sections").exists()  # Old parts/sections/ layout
     )
     if old_structure_detected:
-        messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Legacy introduction structure detected. Only parts/ structure is supported. Remove legacy dirs manually.', intro_dir)}")
+        messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Legacy introduction structure detected. Only parts/parts/ structure is supported. Run fix or migrate manually.', intro_dir)}")
         messages.append("")
         return StatusResult(False, messages)
     
@@ -343,7 +344,7 @@ def check_introduction_area(repo_root: Path, intro_dir: str, ignore_patterns: Se
         return StatusResult(False, messages)
     
     # Validate required parts/ subdirectories
-    required_dirs = ["frontmatter", "sections", "backmatter", "appendix"]
+    required_dirs = ["frontmatter", "parts", "backmatter", "appendix"]  # NEW: parts/parts/ instead of parts/sections/
     required_front = ["title.tex", "preface.tex", "how_to_read.tex", "toc.tex"]
     required_back = ["scope_limits.tex", "closing_notes.tex"]
     
@@ -370,65 +371,98 @@ def check_introduction_area(repo_root: Path, intro_dir: str, ignore_patterns: Se
             messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'parts/backmatter/{fname} missing', intro_dir)}")
             is_compliant = False
     
-    # Check sections/ directory
-    sections_dir = parts_dir / "sections"
-    sections_prefix = "parts/sections"
+    # Check parts/parts/ directory (NEW: Part/Chapter structure)
+    parts_root = parts_dir / "parts"
     
-    # Validate sections/ directory (same logic for both structures)
-    if sections_dir.exists():
-        for item in sections_dir.iterdir():
+    if parts_root.exists():
+        for item in parts_root.iterdir():
             if item.name.startswith("."):
                 continue
             if is_ignored_by_patterns(item, repo_root, ignore_patterns):
                 continue
             if item.is_dir():
-                section_num = _parse_section_dirname(item.name)
-                if section_num is None:
-                    messages.append(f"  {format_error(ErrorCode.INVALID_PARENT, 'Section folders must be numbered NN_<name>', str(item.relative_to(repo_root)))}")
+                part_num = _parse_section_dirname(item.name)
+                if part_num is None:
+                    messages.append(f"  {format_error(ErrorCode.INVALID_PARENT, 'Part folders must be numbered NN_<name>', str(item.relative_to(repo_root)))}")
                     is_compliant = False
                     continue
-                expected_files = [f"{section_num}-{i}.tex" for i in range(1, 11)]
-                chapter_file = item / "chapter.tex"
-                if not chapter_file.exists():
-                    messages.append(
-                        f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'chapter.tex missing', str(item.relative_to(repo_root)))}"
-                    )
+                
+                # Each part must have part.tex
+                part_tex = item / "part.tex"
+                if not part_tex.exists():
+                    messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'part.tex missing (required)', str(item.relative_to(repo_root)))}")
                     is_compliant = False
-                for fn in expected_files:
-                    if not (item / fn).exists():
-                        messages.append(
-                            f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'Missing subsection file {fn}', str(item.relative_to(repo_root)))}"
-                        )
+                
+                # Each part must have chapters/ directory
+                chapters_dir = item / "chapters"
+                if not chapters_dir.exists():
+                    messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'chapters/ directory missing', str(item.relative_to(repo_root)))}")
+                    is_compliant = False
+                    continue
+                
+                # Validate chapters
+                for chapter_item in chapters_dir.iterdir():
+                    if chapter_item.name.startswith("."):
+                        continue
+                    if is_ignored_by_patterns(chapter_item, repo_root, ignore_patterns):
+                        continue
+                    if chapter_item.is_dir():
+                        chapter_num = _parse_section_dirname(chapter_item.name)
+                        if chapter_num is None:
+                            messages.append(f"  {format_error(ErrorCode.INVALID_PARENT, 'Chapter folders must be numbered NN_<name>', str(chapter_item.relative_to(repo_root)))}")
+                            is_compliant = False
+                            continue
+                        
+                        # Each chapter must have chapter.tex
+                        chapter_tex = chapter_item / "chapter.tex"
+                        if not chapter_tex.exists():
+                            messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, 'chapter.tex missing (required)', str(chapter_item.relative_to(repo_root)))}")
+                            is_compliant = False
+                        
+                        # Expect section files N-K.tex
+                        expected_files = [f"{chapter_num}-{i}.tex" for i in range(1, 11)]
+                        for fn in expected_files:
+                            if not (chapter_item / fn).exists():
+                                messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'Missing section file {fn}', str(chapter_item.relative_to(repo_root)))}")
+                                is_compliant = False
+                        
+                        # Check for unexpected items in chapter
+                        for child in chapter_item.iterdir():
+                            if child.name.startswith("."):
+                                continue
+                            if is_ignored_by_patterns(child, repo_root, ignore_patterns):
+                                continue
+                            if child.is_dir():
+                                messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected directory under chapter', str(child.relative_to(repo_root)))}")
+                                is_compliant = False
+                            elif child.name == "README.md":
+                                continue
+                            elif child.name == "chapter.tex":
+                                continue
+                            elif child.name == "title.tex":
+                                continue
+                            elif child.name in expected_files:
+                                continue
+                            else:
+                                messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected file under chapter', str(child.relative_to(repo_root)))}")
+                                is_compliant = False
+                    else:
+                        messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected file in chapters/', str(chapter_item.relative_to(repo_root)))}")
                         is_compliant = False
+                
+                # Check for unexpected items in part
+                allowed_in_part = {"part.tex", "chapters", "README.md", "title.tex"}
                 for child in item.iterdir():
                     if child.name.startswith("."):
                         continue
                     if is_ignored_by_patterns(child, repo_root, ignore_patterns):
                         continue
-                    if child.is_dir():
-                        messages.append(
-                            f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected directory under introduction section', str(child.relative_to(repo_root)))}"
-                        )
-                        is_compliant = False
-                    elif child.name == "README.md":
-                        continue
-                    elif child.name == "chapter.tex":
-                        continue
-                    elif child.name in expected_files:
-                        continue
-                    else:
-                        messages.append(
-                            f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected file under introduction section', str(child.relative_to(repo_root)))}"
-                        )
+                    if child.name not in allowed_in_part:
+                        messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected item in part', str(child.relative_to(repo_root)))}")
                         is_compliant = False
             else:
-                messages.append(
-                    f"  {format_error(ErrorCode.UNEXPECTED_ITEM, f'Unexpected file in {sections_prefix}/', str(item.relative_to(repo_root)))}"
-                )
+                messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected file in parts/parts/', str(item.relative_to(repo_root)))}")
                 is_compliant = False
-    else:
-        messages.append(f"  {format_error(ErrorCode.STRUCTURE_MISSING, f'{sections_prefix}/ directory missing', intro_dir)}")
-        is_compliant = False
 
     # Check for forbidden items directly under introduction root
     allowed = {"README.md", f"{intro_dir}.tex", "parts", "build", "refs.bib"}
@@ -445,9 +479,7 @@ def check_introduction_area(repo_root: Path, intro_dir: str, ignore_patterns: Se
             is_compliant = False
             continue
         if item.is_dir():
-            messages.append(
-                f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected directory in introduction', str(item.relative_to(repo_root)))}"
-            )
+            messages.append(f"  {format_error(ErrorCode.UNEXPECTED_ITEM, 'Unexpected directory in introduction', str(item.relative_to(repo_root)))}")
             is_compliant = False
         else:
             messages.append(

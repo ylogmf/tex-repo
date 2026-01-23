@@ -260,12 +260,12 @@ def fix_repository_structure(repo_root: Path, result: FixResult, layout_name: st
     if hypnosis_dir:
         check_and_create_directory(repo_root / hypnosis_dir / PAPERS_DIRNAME, result, dry_run)
     
-    # Introduction book structure (parts/ subdirectories)
+    # Introduction book structure (NEW: parts/parts/ for Part/Chapter)
     intro_dir = stage_dir(layout_name, "introduction")
     if intro_dir:
         intro_path = repo_root / intro_dir
         check_and_create_directory(intro_path / "parts" / "frontmatter", result, dry_run)
-        check_and_create_directory(intro_path / "parts" / "sections", result, dry_run)
+        check_and_create_directory(intro_path / "parts" / "parts", result, dry_run)  # NEW: parts/parts/ for Parts
         check_and_create_directory(intro_path / "parts" / "backmatter", result, dry_run)
         check_and_create_directory(intro_path / "parts" / "appendix", result, dry_run)
         check_and_create_directory(intro_path / "build", result, dry_run)
@@ -459,7 +459,7 @@ def fix_world_papers(
 
 
 def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dry_run: bool = False) -> Optional[int]:
-    """Fix introduction book structure (entry file, front/back matter under parts/).
+    """Fix introduction book structure with NEW Part/Chapter layout.
     
     Returns:
         1 if legacy structure detected (error condition)
@@ -473,8 +473,9 @@ def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dr
     old_structure_exists = (
         (intro_path / "sections").exists() or 
         (intro_path / "frontmatter").exists() or 
-        (intro_path / "backmatter").exists() or
-        (intro_path / "appendix").exists()
+        (intro_path / "backmatter").exists() or 
+        (intro_path / "appendix").exists() or
+        (intro_path / "parts" / "sections").exists()  # Also reject old parts/sections/ layout
     )
     
     if old_structure_exists:
@@ -487,17 +488,19 @@ def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dr
             legacy_dirs.append("backmatter/")
         if (intro_path / "appendix").exists():
             legacy_dirs.append("appendix/")
+        if (intro_path / "parts" / "sections").exists():
+            legacy_dirs.append("parts/sections/")
         
         print(format_error(
             ErrorCode.UNEXPECTED_ITEM,
-            f"Legacy introduction structure detected: {', '.join(legacy_dirs)}Only parts/ structure is supported. Remove legacy dirs manually.",
+            f"Legacy introduction structure detected: {', '.join(legacy_dirs)}. Only parts/parts/ structure is supported. Remove legacy dirs manually or migrate content.",
             str(intro_path)
         ))
         return 1
     
-    # Create new parts/ structure only
+    # Create new parts/parts/ structure only
     parts_dir = intro_path / "parts"
-    for d in ["frontmatter", "sections", "backmatter", "appendix"]:
+    for d in ["frontmatter", "parts", "backmatter", "appendix"]:  # NEW: parts/parts/ instead of parts/sections/
         check_and_create_directory(parts_dir / d, result, dry_run)
     check_and_create_directory(intro_path / "build", result, dry_run)
     
@@ -511,37 +514,10 @@ def fix_introduction_book(repo_root: Path, result: FixResult, intro_dir: str, dr
     intro_entry = intro_path / f"{intro_dir}.tex"
     check_and_create_file(intro_entry, INTRO_ENTRY_TEMPLATE, result, dry_run)
 
-    # Backfill chapter scaffolds without overwriting content
-    # Check both new and old locations
-    parts_sections_root = intro_path / "parts" / "sections"
-    old_sections_root = intro_path / "sections"
-    
-    sections_root = parts_sections_root if parts_sections_root.exists() else old_sections_root
-    sections_prefix = "parts/sections" if parts_sections_root.exists() else "sections"
-    
-    if sections_root.exists():
-        for item in sections_root.iterdir():
-            if not item.is_dir():
-                continue
-            name = item.name
-            if len(name) < 3 or not name[:2].isdigit() or name[2] != "_":
-                continue
-            section_num = int(name[:2])
-            chapter_path = item / "chapter.tex"
-            rel_base = f"{sections_prefix}/{name}"
-            if not chapter_path.exists():
-                include_lines = [f"\\section*{{Chapter {section_num}: {name[3:].replace('_', ' ')}}}", ""]
-                for i in range(1, 11):
-                    include_lines.append(f"\\input{{{rel_base}/{section_num}-{i}.tex}}")
-                include_lines.append("")
-                check_and_create_file(chapter_path, "\n".join(include_lines), result, dry_run)
-            for i in range(1, 11):
-                check_and_create_file(
-                    item / f"{section_num}-{i}.tex",
-                    f"% Section {section_num}, subsection {i}\n",
-                    result,
-                    dry_run,
-                )
+    # No backfill of old sections - new structure only
+    # Users must create Parts and Chapters using `tex-repo npart` and `tex-repo ns`
+
+    return None
 
 
 def print_fix_results(result: FixResult, dry_run: bool = False) -> None:

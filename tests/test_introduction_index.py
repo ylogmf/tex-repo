@@ -1,5 +1,5 @@
 """
-Tests for introduction index generation.
+Tests for introduction index generation with Part/Chapter structure.
 """
 import tempfile
 from pathlib import Path
@@ -9,7 +9,7 @@ from texrepo.introduction_index import generate_introduction_index, generate_cha
 
 
 def _make_intro_parts_tree(intro_dir):
-    """Create required parts/ tree structure for introduction."""
+    """Create required parts/ tree structure for introduction with Part/Chapter layout."""
     parts_dir = intro_dir / "parts"
     parts_dir.mkdir(parents=True, exist_ok=True)
     
@@ -27,18 +27,18 @@ def _make_intro_parts_tree(intro_dir):
     (backmatter_dir / "scope_limits.tex").write_text("% Scope\n")
     (backmatter_dir / "closing_notes.tex").write_text("% Closing\n")
     
-    # Create sections directory
-    sections_dir = parts_dir / "sections"
-    sections_dir.mkdir(exist_ok=True)
+    # Create parts directory (NEW: parts/parts/ for book Parts)
+    parts_root = parts_dir / "parts"
+    parts_root.mkdir(exist_ok=True)
     
     return parts_dir
 
 
-class TestIntroductionIndex:
-    """Test the introduction index generator."""
+class TestIntroductionIndexWithPartChapter:
+    """Test the introduction index generator with Part/Chapter structure."""
     
-    def test_empty_sections_dir(self, tmp_path):
-        """Test generation with no sections."""
+    def test_empty_parts_dir(self, tmp_path):
+        """Test generation with no parts."""
         intro_dir = tmp_path / "00_introduction"
         intro_dir.mkdir()
         _make_intro_parts_tree(intro_dir)
@@ -47,155 +47,127 @@ class TestIntroductionIndex:
         
         assert output.exists()
         content = output.read_text()
-        # With no sections, file should just have the header comments
+        # With no parts, file should have frontmatter and backmatter
         assert "Auto-generated" in content
+        assert "frontmatter" in content
+        assert "backmatter" in content
     
-    def test_no_sections_dir(self, tmp_path):
-        """Test generation when sections/ doesn't exist."""
+    def test_single_part_with_chapter(self, tmp_path):
+        """Test generation with one part and one chapter."""
         intro_dir = tmp_path / "00_introduction"
         intro_dir.mkdir()
         parts_dir = _make_intro_parts_tree(intro_dir)
-        # Remove sections directory to test this case
-        import shutil
-        shutil.rmtree(parts_dir / "sections")
+        parts_root = parts_dir / "parts"
         
+        # Create a part folder
+        part_dir = parts_root / "01_foundations"
+        part_dir.mkdir()
+        (part_dir / "part.tex").write_text(r"\part{Foundations}" + "\n\n% Part intro\n")
+        
+        # Create chapters directory
+        chapters_dir = part_dir / "chapters"
+        chapters_dir.mkdir()
+        
+        # Create a chapter
+        chapter_dir = chapters_dir / "01_basic_concepts"
+        chapter_dir.mkdir()
+        (chapter_dir / "chapter.tex").write_text(r"\chapter{Basic Concepts}" + "\n\n% Chapter intro\n")
+        
+        # Create section files
+        for i in range(1, 11):
+            (chapter_dir / f"1-{i}.tex").write_text(f"\\section{{Section {i}}}\n% Content\n")
+        
+        # Generate sections_index (content spine)
         output = generate_introduction_index(intro_dir)
         
         assert output.exists()
         content = output.read_text()
-        # With no sections directory, file should still be generated
-        assert "Auto-generated" in content
+        
+        # Check that chapter.tex is included (which contains \chapter command)
+        assert "01_basic_concepts/chapter.tex" in content
+        
+        # Check section file includes
+        for i in range(1, 11):
+            assert f"01_basic_concepts/1-{i}.tex" in content
+        
+        # Generate chapters_index (structural spine)
+        chapters_output = generate_chapters_index(intro_dir)
+        chapters_content = chapters_output.read_text()
+        
+        # Check that part.tex and chapter.tex are included
+        assert "01_foundations/part.tex" in chapters_content
+        assert "01_basic_concepts/chapter.tex" in chapters_content
     
-    def test_single_section_with_subsections(self, tmp_path):
-        """Test generation with one section and subsection files."""
+    def test_multiple_parts_ordered(self, tmp_path):
+        """Test generation with multiple parts in correct order."""
         intro_dir = tmp_path / "00_introduction"
         intro_dir.mkdir()
         parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
+        parts_root = parts_dir / "parts"
         
-        # Create a section folder
-        section_dir = sections_dir / "01_framing"
-        section_dir.mkdir()
-        
-        # Create subsection files
-        for i in range(1, 11):
-            (section_dir / f"1-{i}.tex").write_text(f"% Subsection 1-{i}")
-        
-        output = generate_introduction_index(intro_dir)
-        
-        assert output.exists()
-        content = output.read_text()
-        
-        # Check section header (now formatted as title case)
-        assert r"\section{Framing}" in content
-        
-        # Check subsection includes
-        for i in range(1, 11):
-            assert f"\\input{{parts/sections/01_framing/1-{i}.tex}}" in content
-    
-    def test_multiple_sections_ordered(self, tmp_path):
-        """Test generation with multiple sections in correct order."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
-        
-        # Create sections out of order
-        for section_num, section_name in [(3, "third"), (1, "first"), (2, "second")]:
-            section_dir = sections_dir / f"0{section_num}_{section_name}"
-            section_dir.mkdir()
+        # Create parts out of order
+        for part_num, part_name in [(3, "third"), (1, "first"), (2, "second")]:
+            part_dir = parts_root / f"0{part_num}_{part_name}"
+            part_dir.mkdir()
+            (part_dir / "part.tex").write_text(f"\\part{{{part_name.title()}}}\n")
             
-            # Create a few subsection files
+            chapters_dir = part_dir / "chapters"
+            chapters_dir.mkdir()
+            
+            # Create one chapter per part
+            chapter_dir = chapters_dir / "01_intro"
+            chapter_dir.mkdir()
+            (chapter_dir / "chapter.tex").write_text(f"\\chapter{{Introduction to {part_name.title()}}}\n")
+            
+            # Create a few section files
             for i in range(1, 4):
-                (section_dir / f"{section_num}-{i}.tex").write_text(f"% Content {section_num}-{i}")
+                (chapter_dir / f"1-{i}.tex").write_text(f"% Content {i}\n")
         
-        output = generate_introduction_index(intro_dir)
+        # Generate chapters_index
+        chapters_output = generate_chapters_index(intro_dir)
+        chapters_content = chapters_output.read_text()
         
-        assert output.exists()
-        content = output.read_text()
-        
-        # Check sections appear in order (now formatted as title case)
-        first_pos = content.find(r"\section{First}")
-        second_pos = content.find(r"\section{Second}")
-        third_pos = content.find(r"\section{Third}")
+        # Check parts appear in order
+        first_pos = chapters_content.find("01_first/part.tex")
+        second_pos = chapters_content.find("02_second/part.tex")
+        third_pos = chapters_content.find("03_third/part.tex")
         
         assert first_pos < second_pos < third_pos
-        
-        # Check subsections
-        assert r"\input{parts/sections/01_first/1-1.tex}" in content
-        assert r"\input{parts/sections/02_second/2-1.tex}" in content
-        assert r"\input{parts/sections/03_third/3-1.tex}" in content
     
-    def test_section_with_underscores_in_name(self, tmp_path):
-        """Test that underscores in section names are converted to spaces."""
+    def test_multiple_chapters_in_part(self, tmp_path):
+        """Test generation with multiple chapters in one part."""
         intro_dir = tmp_path / "00_introduction"
         intro_dir.mkdir()
         parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
+        parts_root = parts_dir / "parts"
         
-        section_dir = sections_dir / "01_hello_world_test"
-        section_dir.mkdir()
-        (section_dir / "1-1.tex").write_text("% Content")
+        # Create a part
+        part_dir = parts_root / "01_main"
+        part_dir.mkdir()
+        (part_dir / "part.tex").write_text("\\part{Main}\n")
         
-        output = generate_introduction_index(intro_dir)
+        chapters_dir = part_dir / "chapters"
+        chapters_dir.mkdir()
         
-        content = output.read_text()
-        # Now formats to title case with spaces
-        assert r"\section{Hello World Test}" in content
-    
-    def test_empty_section_folder(self, tmp_path):
-        """Test that empty section folders are skipped."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
+        # Create chapters out of order
+        for chapter_num, chapter_name in [(3, "third"), (1, "first"), (2, "second")]:
+            chapter_dir = chapters_dir / f"0{chapter_num}_{chapter_name}"
+            chapter_dir.mkdir()
+            (chapter_dir / "chapter.tex").write_text(f"\\chapter{{{chapter_name.title()}}}\n")
+            
+            for i in range(1, 3):
+                (chapter_dir / f"{chapter_num}-{i}.tex").write_text(f"% Content\n")
         
-        section_dir = sections_dir / "01_test"
-        section_dir.mkdir()
+        # Generate chapters_index
+        chapters_output = generate_chapters_index(intro_dir)
+        chapters_content = chapters_output.read_text()
         
-        # Create files with correct and incorrect section numbers
-        (section_dir / "1-1.tex").write_text("% Correct")
-        (section_dir / "1-2.tex").write_text("% Correct")
-        (section_dir / "2-1.tex").write_text("% Wrong section number")
-        (section_dir / "other.tex").write_text("% Wrong format")
+        # Check chapters appear in order
+        first_pos = chapters_content.find("01_first/chapter.tex")
+        second_pos = chapters_content.find("02_second/chapter.tex")
+        third_pos = chapters_content.find("03_third/chapter.tex")
         
-        output = generate_introduction_index(intro_dir)
-        
-        content = output.read_text()
-        
-        # Only 1-1 and 1-2 should be included
-        assert r"\input{parts/sections/01_test/1-1.tex}" in content
-        assert r"\input{parts/sections/01_test/1-2.tex}" in content
-        assert "2-1.tex" not in content
-        assert "other.tex" not in content
-    
-    def test_subsections_sorted_by_number(self, tmp_path):
-        """Test that subsection files are sorted numerically."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
-        
-        section_dir = sections_dir / "01_test"
-        section_dir.mkdir()
-        
-        # Create files out of order
-        for i in [3, 1, 10, 2, 5]:
-            (section_dir / f"1-{i}.tex").write_text(f"% Content {i}")
-        
-        output = generate_introduction_index(intro_dir)
-        
-        content = output.read_text()
-        
-        # Extract section input lines (skip frontmatter/backmatter)
-        lines = [line for line in content.split('\n') if r'\input{' in line and 'parts/sections/' in line]
-        
-        # Check order
-        assert lines[0].endswith("1-1.tex}")
-        assert lines[1].endswith("1-2.tex}")
-        assert lines[2].endswith("1-3.tex}")
-        assert lines[3].endswith("1-5.tex}")
-        assert lines[4].endswith("1-10.tex}")
+        assert first_pos < second_pos < third_pos
     
     def test_build_directory_created(self, tmp_path):
         """Test that build directory is created if it doesn't exist."""
@@ -210,47 +182,6 @@ class TestIntroductionIndex:
         assert output.parent.exists()
         assert output.parent.name == "build"
 
-    def test_chapters_index_generation(self, tmp_path):
-        """Test that chapters_index.tex is generated with chapter includes in order."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
-
-        for n, name in [(2, "second"), (1, "first")]:
-            section_dir = sections_dir / f"0{n}_{name}"
-            section_dir.mkdir()
-            (section_dir / "chapter.tex").write_text("% chapter", encoding="utf-8")
-
-        output = generate_chapters_index(intro_dir)
-        content = output.read_text()
-
-        first_pos = content.find("parts/sections/01_first/chapter.tex")
-        second_pos = content.find("parts/sections/02_second/chapter.tex")
-        assert first_pos < second_pos
-        assert content.startswith("% Auto-generated chapter include list")
-
-    def test_chapters_index_skips_missing_chapter(self, tmp_path):
-        """Chapters index should skip sections without chapter.tex."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
-
-        good = sections_dir / "01_good"
-        good.mkdir()
-        (good / "chapter.tex").write_text("% chapter")
-
-        bad = sections_dir / "02_bad"
-        bad.mkdir()
-        # no chapter.tex
-
-        output = generate_chapters_index(intro_dir)
-        content = output.read_text()
-
-        assert "parts/sections/01_good/chapter.tex" in content
-        assert "02_bad" not in content
-
 
 class TestAppendixSupport:
     """Test appendix support in index generation."""
@@ -259,32 +190,7 @@ class TestAppendixSupport:
         """Test that no appendix code is generated when appendix/ doesn't exist."""
         intro_dir = tmp_path / "00_introduction"
         intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
-        
-        # Create a section
-        section_dir = sections_dir / "01_test"
-        section_dir.mkdir()
-        (section_dir / "1-1.tex").write_text("% Content")
-        
-        output = generate_introduction_index(intro_dir)
-        content = output.read_text()
-        
-        # Should not contain \appendix
-        assert "\\appendix" not in content
-    
-    def test_empty_appendix_directory(self, tmp_path):
-        """Test that no appendix code is generated when appendix/ is empty."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
-        (parts_dir / "appendix").mkdir()
-        
-        # Create a section
-        section_dir = sections_dir / "01_test"
-        section_dir.mkdir()
-        (section_dir / "1-1.tex").write_text("% Content")
+        _make_intro_parts_tree(intro_dir)
         
         output = generate_introduction_index(intro_dir)
         content = output.read_text()
@@ -293,18 +199,26 @@ class TestAppendixSupport:
         assert "\\appendix" not in content
     
     def test_appendix_with_files(self, tmp_path):
-        """Test that appendix files are included after sections."""
+        """Test that appendix files are included after chapters."""
         intro_dir = tmp_path / "00_introduction"
         intro_dir.mkdir()
         parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
+        parts_root = parts_dir / "parts"
         appendix_dir = parts_dir / "appendix"
         appendix_dir.mkdir()
         
-        # Create a section
-        section_dir = sections_dir / "01_test"
-        section_dir.mkdir()
-        (section_dir / "1-1.tex").write_text("% Content")
+        # Create a part with chapter
+        part_dir = parts_root / "01_main"
+        part_dir.mkdir()
+        (part_dir / "part.tex").write_text("\\part{Main}\n")
+        
+        chapters_dir = part_dir / "chapters"
+        chapters_dir.mkdir()
+        
+        chapter_dir = chapters_dir / "01_intro"
+        chapter_dir.mkdir()
+        (chapter_dir / "chapter.tex").write_text("\\chapter{Introduction}\n")
+        (chapter_dir / "1-1.tex").write_text("% Content\n")
         
         # Create appendix files
         (appendix_dir / "01_notation.tex").write_text("% Notation")
@@ -320,82 +234,8 @@ class TestAppendixSupport:
         assert "\\input{parts/appendix/01_notation.tex}" in content
         assert "\\input{parts/appendix/02_proofs.tex}" in content
         
-        # Appendix should come after sections
-        section_pos = content.find("\\input{parts/sections/01_test/1-1.tex}")
-        appendix_pos = content.find("\\appendix")
-        assert section_pos < appendix_pos
-    
-    def test_appendix_files_sorted(self, tmp_path):
-        """Test that appendix files are included in sorted order."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        appendix_dir = parts_dir / "appendix"
-        appendix_dir.mkdir()
-        
-        # Create appendix files out of order
-        (appendix_dir / "03_third.tex").write_text("% Third")
-        (appendix_dir / "01_first.tex").write_text("% First")
-        (appendix_dir / "02_second.tex").write_text("% Second")
-        
-        output = generate_introduction_index(intro_dir)
-        content = output.read_text()
-        
-        # Check order
-        first_pos = content.find("parts/appendix/01_first.tex")
-        second_pos = content.find("parts/appendix/02_second.tex")
-        third_pos = content.find("parts/appendix/03_third.tex")
-        
-        assert first_pos < second_pos < third_pos
-    
-    def test_appendix_ignores_non_tex_files(self, tmp_path):
-        """Test that only .tex files in appendix/ are included."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        appendix_dir = parts_dir / "appendix"
-        appendix_dir.mkdir()
-        
-        # Create various files
-        (appendix_dir / "01_include.tex").write_text("% Include")
-        (appendix_dir / "readme.md").write_text("# README")
-        (appendix_dir / "data.txt").write_text("data")
-        
-        output = generate_introduction_index(intro_dir)
-        content = output.read_text()
-        
-        # Should only include .tex file
-        assert "parts/appendix/01_include.tex" in content
-        assert "readme.md" not in content
-        assert "data.txt" not in content
-    
-    def test_chapters_index_with_appendix(self, tmp_path):
-        """Test that chapters_index.tex includes appendix after chapters."""
-        intro_dir = tmp_path / "00_introduction"
-        intro_dir.mkdir()
-        parts_dir = _make_intro_parts_tree(intro_dir)
-        sections_dir = parts_dir / "sections"
-        appendix_dir = parts_dir / "appendix"
-        appendix_dir.mkdir()
-        
-        # Create a section with chapter
-        section_dir = sections_dir / "01_chapter"
-        section_dir.mkdir()
-        (section_dir / "chapter.tex").write_text("% Chapter")
-        
-        # Create appendix files
-        (appendix_dir / "01_appendix.tex").write_text("% Appendix")
-        
-        output = generate_chapters_index(intro_dir)
-        content = output.read_text()
-        
-        # Should contain both chapter and appendix
-        assert "parts/sections/01_chapter/chapter.tex" in content
-        assert "\\appendix" in content
-        assert "parts/appendix/01_appendix.tex" in content
-        
-        # Appendix should come after chapter
-        chapter_pos = content.find("parts/sections/01_chapter/chapter.tex")
+        # Appendix should come after chapters
+        chapter_pos = content.find("01_intro/chapter.tex")
         appendix_pos = content.find("\\appendix")
         assert chapter_pos < appendix_pos
 

@@ -139,10 +139,11 @@ INTRO_ENTRY_TEMPLATE = r"""\documentclass[11pt]{book}
 \begin{document}
 
 \frontmatter
+\maketitle
 \input{build/sections_index.tex}
 
 \mainmatter
-% Main content sections are included via sections_index.tex
+\input{build/chapters_index.tex}
 
 \backmatter
 % Backmatter is included via sections_index.tex
@@ -334,9 +335,9 @@ def cmd_init(args) -> int:
     # Create book structure for introduction
     if intro_dir:
         intro_path = repo / intro_dir
-        # Create parts/ container structure
+        # Create parts/ container structure with NEW parts/parts/ layout
         parts_dir = intro_path / "parts"
-        (parts_dir / "sections").mkdir(parents=True, exist_ok=True)
+        (parts_dir / "parts").mkdir(parents=True, exist_ok=True)  # NEW: book Parts container
         (parts_dir / "frontmatter").mkdir(parents=True, exist_ok=True)
         (parts_dir / "backmatter").mkdir(parents=True, exist_ok=True)
         (parts_dir / "appendix").mkdir(parents=True, exist_ok=True)
@@ -361,7 +362,7 @@ def cmd_init(args) -> int:
 
     stage_readmes = {}
     if intro_dir:
-        stage_readmes[intro_dir] = "# Introduction\n\nBook-scale introduction with numbered sections. Use 'tex-repo ns <section-name>' to create sections.\n"
+        stage_readmes[intro_dir] = "# Introduction\n\nBook-scale introduction with Parts and Chapters. Use 'tex-repo npart <name>' to create parts and 'tex-repo ns <name> [--part <part>]' to create chapters.\n"
     if process_dir:
         stage_readmes[process_dir] = "# Process Regime\n\nNatural processes and governing regimes.\n"
     if function_dir:

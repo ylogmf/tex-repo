@@ -71,9 +71,9 @@ def test_status_accepts_new_layout_with_book_intro(tmp_path, monkeypatch):
     intro_path = repo_path / "00_introduction"
     write_text(intro_path / "00_introduction.tex", "\\documentclass{article}\n\\begin{document}\nIntro\n\\end{document}\n")
     
-    # Use new parts/ structure
+    # Use new parts/parts/ structure (Part/Chapter structure)
     parts_dir = intro_path / "parts"
-    (parts_dir / "sections").mkdir(parents=True, exist_ok=True)
+    parts_container_dir = parts_dir / "parts"
     (parts_dir / "frontmatter").mkdir(parents=True, exist_ok=True)
     (parts_dir / "backmatter").mkdir(parents=True, exist_ok=True)
     (parts_dir / "appendix").mkdir(parents=True, exist_ok=True)
@@ -90,12 +90,15 @@ def test_status_accepts_new_layout_with_book_intro(tmp_path, monkeypatch):
     write_text(parts_dir / "backmatter" / "scope_limits.tex", "% Scope and limits\n")
     write_text(parts_dir / "backmatter" / "closing_notes.tex", "% Closing notes\n")
     
-    # Create a section in introduction under parts/sections/ with chapter.tex
-    section_dir = parts_dir / "sections" / "01_foundations"
-    section_dir.mkdir(parents=True, exist_ok=True)
-    write_text(section_dir / "chapter.tex", "% Chapter content\n")
+    # Create a part with a chapter in new parts/parts/<part>/chapters/<chapter>/ structure
+    part_dir = parts_container_dir / "01_foundations-part"
+    chapters_dir = part_dir / "chapters"
+    chapter_dir = chapters_dir / "01_intro-chapter"
+    chapter_dir.mkdir(parents=True, exist_ok=True)
+    write_text(part_dir / "part.tex", "% Part introduction\n")
+    write_text(chapter_dir / "chapter.tex", "% Chapter content\n")
     for i in range(1, 11):
-        write_text(section_dir / f"1-{i}.tex", f"% Section 1, subsection {i}\n")
+        write_text(chapter_dir / f"1-{i}.tex", f"% Section 1, subsection {i}\n")
     
     # Create branch directories for process_regime and function_application
     for branch in ["process", "regime"]:
@@ -191,9 +194,9 @@ def test_fix_creates_missing_readmes_and_dirs_without_overwrite(tmp_path, monkey
     assert (repo_path / "01_process_regime" / "process" / "papers").is_dir()
 
 
-# Test 4: ns creates section with 10 subsections
+# Test 4: ns creates chapter with 10 sections
 def test_ns_creates_section_with_10_subsections(tmp_path, monkeypatch):
-    """Verify ns command creates numbered section with 10 subsection files."""
+    """Verify ns command creates numbered chapter with 10 section files in Part/Chapter structure."""
     repo_path = _init_repo(tmp_path, monkeypatch, "new")
     
     # Mock find_repo_root to return our test repo
@@ -202,24 +205,25 @@ def test_ns_creates_section_with_10_subsections(tmp_path, monkeypatch):
     
     monkeypatch.setattr('texrepo.section_cmd.find_repo_root', mock_find_repo_root)
     
-    args = SimpleNamespace(section_name="foundations")
+    # Create chapter with ns command (defaults to part 01_part-1)
+    args = SimpleNamespace(section_name="foundations", part=None)
     rc = cmd_ns(args)
     assert rc == 0, "ns command should succeed"
     
-    # Verify section directory was created with correct numbering under parts/sections/
-    section_dir = repo_path / "00_introduction" / "parts" / "sections" / "01_foundations"
-    assert section_dir.is_dir(), "Section directory should be created under parts/sections/"
+    # Verify chapter directory was created with correct numbering under parts/parts/<part>/chapters/
+    chapter_dir = repo_path / "00_introduction" / "parts" / "parts" / "01_part-1" / "chapters" / "01_foundations"
+    assert chapter_dir.is_dir(), "Chapter directory should be created under parts/parts/01_part-1/chapters/"
     
-    # Verify all 10 subsection files exist
+    # Verify all 10 section files exist
     for i in range(1, 11):
-        subsection_file = section_dir / f"1-{i}.tex"
-        assert subsection_file.exists(), f"Subsection file 1-{i}.tex should exist"
+        section_file = chapter_dir / f"1-{i}.tex"
+        assert section_file.exists(), f"Section file 1-{i}.tex should exist"
     
     # Verify chapter.tex was created
-    chapter_file = section_dir / "chapter.tex"
+    chapter_file = chapter_dir / "chapter.tex"
     assert chapter_file.exists(), "chapter.tex should be created"
     
-    # Verify status passes after creating section
+    # Verify status passes after creating chapter
     result = check_repo_status(repo_path)
     # Note: status may have warnings about missing papers, but should not have errors about intro structure
     messages_str = " ".join(result.messages)

@@ -64,7 +64,7 @@ class TestCommandMatrix:
         # Verify new layout structure
         assert (repo_path / "00_introduction").is_dir()
         assert (repo_path / "00_introduction" / "00_introduction.tex").exists()
-        assert (repo_path / "00_introduction" / "parts" / "sections").is_dir()
+        assert (repo_path / "00_introduction" / "parts" / "parts").is_dir()
         assert (repo_path / "00_introduction" / "parts" / "frontmatter").is_dir()
         assert (repo_path / "00_introduction" / "parts" / "appendix").is_dir()
         assert (repo_path / "00_introduction" / "README.md").exists()
@@ -103,21 +103,24 @@ class TestCommandMatrix:
         assert "Test Project" in identity_content
         assert "Test Author" in identity_content
         
-        # D) ns - create introduction section
+        # D) ns - create introduction chapter (in default part 01_part-1)
         result = run_texrepo(["ns", "foundations"], cwd=repo_path)
         assert result.returncode == 0, f"ns failed: {result.stderr}"
-        section_dir = repo_path / "00_introduction" / "parts" / "sections" / "01_foundations"
-        assert section_dir.is_dir()
+        # ns creates a chapter in the default part (01_part-1)
+        part_dir = repo_path / "00_introduction" / "parts" / "parts" / "01_part-1"
+        assert part_dir.is_dir()
+        chapter_dir = part_dir / "chapters" / "01_foundations"
+        assert chapter_dir.is_dir()
         for i in range(1, 11):
-            assert (section_dir / f"1-{i}.tex").exists()
+            assert (chapter_dir / f"1-{i}.tex").exists()
         
-        # D) ns - create second section
+        # D) ns - create second chapter in same part
         result = run_texrepo(["ns", "applications"], cwd=repo_path)
         assert result.returncode == 0
-        section_dir2 = repo_path / "00_introduction" / "parts" / "sections" / "02_applications"
-        assert section_dir2.is_dir()
+        chapter_dir2 = part_dir / "chapters" / "02_applications"
+        assert chapter_dir2.is_dir()
         for i in range(1, 11):
-            assert (section_dir2 / f"2-{i}.tex").exists()
+            assert (chapter_dir2 / f"2-{i}.tex").exists()
         
         # E) nd - create domain under paper-scale stage
         result = run_texrepo(["nd", "03_hypnosis", "framework"], cwd=repo_path)
@@ -338,28 +341,29 @@ class TestNsCommand:
             check=True,
         )
         
-        # Create first section
+        # Create first chapter (defaults to part 01_part-1)
         result = run_texrepo(["ns", "basics"], cwd=repo_path)
         assert result.returncode == 0, f"ns failed: {result.stderr}"
         
-        section_dir = repo_path / "00_introduction" / "parts" / "sections" / "01_basics"
-        assert section_dir.is_dir()
+        # New structure: parts/parts/<part>/chapters/<chapter>/
+        chapter_dir = repo_path / "00_introduction" / "parts" / "parts" / "01_part-1" / "chapters" / "01_basics"
+        assert chapter_dir.is_dir()
         for i in range(1, 11):
-            subsection = section_dir / f"1-{i}.tex"
-            assert subsection.exists(), f"Subsection 1-{i}.tex should exist"
+            section_file = chapter_dir / f"1-{i}.tex"
+            assert section_file.exists(), f"Section file 1-{i}.tex should exist"
         
-        # Create second section - should be numbered 02
+        # Create second chapter - should be numbered 02
         result = run_texrepo(["ns", "advanced"], cwd=repo_path)
         assert result.returncode == 0
         
-        section_dir2 = repo_path / "00_introduction" / "parts" / "sections" / "02_advanced"
-        assert section_dir2.is_dir()
+        chapter_dir2 = repo_path / "00_introduction" / "parts" / "parts" / "01_part-1" / "chapters" / "02_advanced"
+        assert chapter_dir2.is_dir()
         for i in range(1, 11):
-            subsection = section_dir2 / f"2-{i}.tex"
-            assert subsection.exists()
+            section_file = chapter_dir2 / f"2-{i}.tex"
+            assert section_file.exists()
     
     def test_ns_refuses_duplicate(self, tmp_path):
-        """Test that ns refuses to create duplicate section."""
+        """Test that ns allows creating chapters with same name (different numbers)."""
         repo_path = tmp_path / "dup-section-repo"
         
         run_texrepo(
@@ -369,16 +373,17 @@ class TestNsCommand:
             check=True,
         )
         
-        # Create section
+        # Create chapter
         run_texrepo(["ns", "test"], cwd=repo_path, check=True)
         
         # Try to create same name again - should create 02_test (different number)
         result = run_texrepo(["ns", "test"], cwd=repo_path)
-        # It actually succeeds with a different number, not a refusal
+        # It actually succeeds with a different number
         assert result.returncode == 0
-        # Both should exist with different numbers
-        assert (repo_path / "00_introduction" / "parts" / "sections" / "01_test").exists()
-        assert (repo_path / "00_introduction" / "parts" / "sections" / "02_test").exists()
+        # Both should exist with different numbers under default part
+        part_chapters = repo_path / "00_introduction" / "parts" / "parts" / "01_part-1" / "chapters"
+        assert (part_chapters / "01_test").exists()
+        assert (part_chapters / "02_test").exists()
 
 
 class TestNdCommand:
@@ -536,7 +541,7 @@ class TestBuildCommand:
             check=True,
         )
         
-        # Create two sections
+        # Create two chapters
         run_texrepo(["ns", "foundations"], cwd=repo_path, check=True)
         run_texrepo(["ns", "applications"], cwd=repo_path, check=True)
         
@@ -550,16 +555,17 @@ class TestBuildCommand:
         
         index_content = index_file.read_text()
         
-        # Check that both sections are included in order (now formatted as title case)
-        assert r"\section{Foundations}" in index_content
-        assert r"\section{Applications}" in index_content
-        foundations_pos = index_content.find(r"\section{Foundations}")
-        applications_pos = index_content.find(r"\section{Applications}")
-        assert foundations_pos < applications_pos, "Sections should be in numeric order"
+        # Check that both chapters are included with proper paths (new Part/Chapter structure)
+        # sections_index.tex now contains chapter.tex and section files, not \chapter commands
+        assert "parts/parts/01_part-1/chapters/01_foundations" in index_content
+        assert "parts/parts/01_part-1/chapters/02_applications" in index_content
+        foundations_pos = index_content.find("01_foundations")
+        applications_pos = index_content.find("02_applications")
+        assert foundations_pos < applications_pos, "Chapters should be in numeric order"
         
-        # Check that subsection files are included with parts/ prefix
-        assert r"\input{parts/sections/01_foundations/1-1.tex}" in index_content
-        assert r"\input{parts/sections/02_applications/2-1.tex}" in index_content
+        # Check that section files are included with new parts/parts/<part>/chapters/ prefix
+        assert r"\input{parts/parts/01_part-1/chapters/01_foundations/1-1.tex}" in index_content
+        assert r"\input{parts/parts/01_part-1/chapters/02_applications/2-1.tex}" in index_content
         
         # Verify PDF was created
         pdf_path = repo_path / "00_introduction" / "build" / "00_introduction.pdf"

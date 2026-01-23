@@ -12,24 +12,24 @@ from .release_cmd import cmd_release
 from .fix_cmd import cmd_fix
 from .env_cmd import check_environment, generate_guide
 from .install_cmd import execute_guide
-from .section_cmd import cmd_ns
+from .section_cmd import cmd_ns, cmd_npart
 from .layouts import DEFAULT_LAYOUT, LAYOUTS
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tex-repo",
-        description="LaTeX Theory Repository Manager - layered development with immutable foundations"
+        description="LaTeX repository manager with book-scale Introduction (Part/Chapter structure), paper-scale stages, and immutable releases"
     )
     sub = p.add_subparsers(dest="cmd", required=True, title="Available commands", metavar="COMMAND")
 
     p_init = sub.add_parser(
         "init",
-        help="Initialize a new LaTeX theory repository with layered structure and metadata",
+        help="Initialize a new LaTeX theory repository with Part/Chapter introduction structure",
         description="""
-Initialize a new tex-repo with a book-scale introduction (00_introduction/) and paper-scale
-stages (process, function, hypnosis). Use the 'ns' command to add sections to the introduction.
-The default layout is 'new' (introduction-first). Use --layout old for the legacy world-based layout.
+Initialize a new tex-repo with a book-scale introduction (00_introduction/) using Part/Chapter
+structure and paper-scale stages (process, function, hypnosis). Use 'npart' to create parts
+and 'ns' to add chapters within parts.
 """,
     )
     p_init.add_argument(
@@ -63,11 +63,20 @@ The default layout is 'new' (introduction-first). Use --layout old for the legac
 
     p_ns = sub.add_parser(
         "ns",
-        help="Create a numbered section within the introduction book (00_introduction/) with 10 subsection files",
-        description="Create the next numbered section under 00_introduction/ with pre-created subsection files (1-1.tex ... 1-10.tex). The introduction is book-scale, not paper-scale.",
+        help="Create a numbered Chapter within an Introduction Part (creates chapter.tex + 1-1..1-10)",
+        description="Create a chapter inside a part of the introduction book with chapter.tex (chapter prologue) and section files (1-1.tex ... 1-10.tex). Use --part to specify target part.",
     )
-    p_ns.add_argument("section_name", help="Section name (will be prefixed with the next number, e.g., 01_<name>)")
+    p_ns.add_argument("section_name", help="Chapter name (will be prefixed with the next number, e.g., 01_<name>)")
+    p_ns.add_argument("--part", help="Target part name or number (default: 01_part-1, created if missing)")
     p_ns.set_defaults(fn=cmd_ns)
+
+    p_npart = sub.add_parser(
+        "npart",
+        help="Create a new Part in the Introduction book (00_introduction/parts/parts/...)",
+        description="Create a new part directory with part.tex (part introduction) and an empty chapters/ directory.",
+    )
+    p_npart.add_argument("part_name", help="Part name (will be prefixed with the next number, e.g., 01_<name>)")
+    p_npart.set_defaults(fn=cmd_npart)
 
     p_b = sub.add_parser("b", help="Compile LaTeX papers to PDF with smart caching and dependency tracking",
                         description="""

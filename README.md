@@ -75,7 +75,7 @@ A repository is identified by the presence of `.paperrepo`.
 
 ## Introduction (Book)
 
-The introduction is a book-class LaTeX document.
+The introduction is a book-class LaTeX document with explicit Part/Chapter structure.
 
 **Structure:**
 
@@ -87,13 +87,16 @@ The introduction is a book-class LaTeX document.
 │   │   ├── title.tex
 │   │   ├── preface.tex
 │   │   └── how_to_read.tex
-│   ├── sections/
-│   │   └── NN_<name>/
-│   │       ├── chapter.tex
-│   │       ├── 1-1.tex
-│   │       ├── 1-2.tex
-│   │       ├── ...
-│   │       └── 1-10.tex
+│   ├── parts/
+│   │   └── NN_<part_name>/
+│   │       ├── part.tex           # part introduction
+│   │       └── chapters/
+│   │           └── NN_<chapter_name>/
+│   │               ├── chapter.tex # chapter prologue
+│   │               ├── 1-1.tex
+│   │               ├── 1-2.tex
+│   │               ├── ...
+│   │               └── 1-10.tex
 │   ├── backmatter/
 │   │   ├── closing_notes.tex
 │   │   └── scope_limits.tex
@@ -102,12 +105,12 @@ The introduction is a book-class LaTeX document.
 │       ├── B_<name>.tex
 │       └── ...
 └── build/                       # generated files only
-    ├── chapters_index.tex
-    ├── sections_index.tex
+    ├── chapters_index.tex       # structural spine (\part, \chapter)
+    ├── sections_index.tex       # content spine (prologues + sections)
     └── latexmk.log
 ```
 
-- `parts/` contains source files
+- `parts/parts/` contains part directories with chapters
 - `build/` contains generated files only
 
 **Entry file:** `00_introduction/00_introduction.tex`
@@ -115,6 +118,8 @@ The introduction is a book-class LaTeX document.
 - Uses `\documentclass{book}`
 - Defines `\frontmatter`, `\mainmatter`, `\backmatter`
 - Inputs generated files from `build/`
+- `chapters_index.tex` provides structural spine with `\part` and `\chapter` commands
+- `sections_index.tex` provides content spine with chapter prologues and section files
 
 ---
 
@@ -123,16 +128,29 @@ The introduction is a book-class LaTeX document.
 ### `tex-repo init <path>`
 Create a new repository with the standard layout.
 
-### `tex-repo ns <name>`
+### `tex-repo npart <name>`
+Create a new part in the introduction book.
+
+**Creates:**
+```
+parts/parts/NN_<name>/
+├── part.tex
+└── chapters/
+```
+
+### `tex-repo ns <name> [--part <part>]`
 Add a new chapter to the introduction book.
 
 **Creates:**
 ```
-parts/sections/NN_<name>/
+parts/parts/<part>/chapters/NN_<name>/
 ├── chapter.tex
 ├── 1-1.tex
-└── ...
+├── ...
+└── 1-10.tex
 ```
+
+Defaults to `01_part-1` if no part is specified.
 
 ### `tex-repo np <path> [title]`
 Create a new paper under an allowed `papers/` directory.
@@ -308,6 +326,34 @@ tex-repo np 01_process_regime/process/papers/00_topic "Process Paper"
 - Attempting to place papers under `00_introduction`
 - Existing entry `.tex` file in the target directory
 
+### tex-repo npart
+`tex-repo npart`
+
+**Purpose**  
+Create a new part in the introduction book.
+
+**Required arguments**
+- `part_name`
+
+**Behavior**
+- Creates: `00_introduction/parts/parts/NN_<part_name>/`
+- Generates:
+  - `part.tex` (part introduction)
+  - `chapters/` directory
+- Picks the next available `NN` number
+
+**Example**
+
+```bash
+tex-repo npart foundations
+```
+
+**Common failures**
+- Introduction stage missing
+- Duplicate part name
+
+---
+
 ### tex-repo ns
 `tex-repo ns`
 
@@ -315,25 +361,29 @@ tex-repo np 01_process_regime/process/papers/00_topic "Process Paper"
 Add a numbered chapter to the introduction book.
 
 **Required arguments**
-- `section_name`
+- `chapter_name`
+
+**Optional arguments**
+- `--part <part_name_or_number>` — Target part (default: `01_part-1`)
 
 **Behavior**
-- Creates: `00_introduction/parts/sections/NN_<section_name>/`
-- Skips `NN = 00`
+- Creates: `00_introduction/parts/parts/<part>/chapters/NN_<chapter_name>/`
+- If the specified part doesn't exist, creates it automatically
 - Generates:
-  - `chapter.tex`
-  - `1-1.tex` through `1-10.tex` placeholders
-- Errors if the section already exists
+  - `chapter.tex` (chapter prologue with `\chapter` command)
+  - `1-1.tex` through `1-10.tex` (section placeholders)
+- Picks the next available chapter number within the part
 
 **Example**
 
 ```bash
 tex-repo ns overview
+tex-repo ns advanced --part 02_extensions
 ```
 
 **Common failures**
 - Introduction stage missing
-- Duplicate section name
+
 ---
 
 ### `tex-repo b`
@@ -353,34 +403,16 @@ Compile a paper (or all papers) to PDF with caching and log hints.
 
 ---
 
-## Title Formatting Contract (Introduction Sections)
+## Title Formatting
 
-Section titles in the Introduction book are **display-only** and are derived from section folder names under:
+Part and chapter titles in the Introduction book are derived from directory names:
 
-```
-00_introduction/parts/sections/NN_<raw-name>/
-```
-
-This formatting affects **only** the generated `\section{...}` text in:
-
-```
-00_introduction/build/sections_index.tex
-```
-
-It never changes folder names, file paths, ordering, or any user-authored `.tex` content.
-
----
-
-### Normalization
-
-- The section title source is the folder suffix `<raw-name>` after the `NN_` prefix
-- Hyphens (`-`) and underscores (`_`) are treated as word separators and rendered as spaces
-
----
+- **Part titles**: `parts/parts/NN_<part_name>/` → formatted as book-style title
+- **Chapter titles**: `chapters/NN_<chapter_name>/` → formatted as book-style title
 
 ### Book-Style Capitalization
 
-The formatter applies book-style capitalization to the normalized words:
+The formatter applies book-style capitalization:
 
 - The **first word** is always capitalized
 - The following connector words are lowercase unless first:
@@ -391,74 +423,13 @@ The formatter applies book-style capitalization to the normalized words:
   - Words that are all-uppercase remain all-uppercase
   - Short lowercase tokens of length 1–2 are treated as acronyms and uppercased, unless they are connector words
 - Numeric tokens are preserved as-is
-
----
+- Hyphens (`-`) and underscores (`_`) are treated as word separators
 
 ### Examples
 
 | Folder Name              | Generated Title              |
 |--------------------------|------------------------------|
-| `01_section-1`           | `\section{Section 1}`        |
-| `02_np_vs_p`             | `\section{NP vs P}`          |
-| `03_law_of_motion`       | `\section{Law of Motion}`    |
-| `04_in_the_beginning`    | `\section{In the Beginning}` |
-
----
-
-### Title Overrides (Mathematical Notation)
-
-**Policy**  
-Directory names are structural identifiers and **MUST NOT** encode mathematical notation.
-
-When mathematical notation or complex LaTeX is required in a section title (e.g. `$\alpha$ vs NP`), use an explicit override file instead of embedding symbols in folder names.
-
----
-
-### Override Mechanism
-
-For any section directory:
-
-```
-00_introduction/parts/sections/NN_<raw-name>/
-```
-
-If a file named `title.tex` exists inside that directory, its content is used **verbatim** as the section title, replacing the formatted folder name.
-
----
-
-### Rules
-
-- `title.tex` contains **only** the LaTeX content for the title
-- Do **NOT** include `\section{}` or any other structural commands
-- The generator emits:
-  ```latex
-  \section{<content of title.tex>}
-  ```
-- `title.tex` may contain math mode, formatting commands, or any valid LaTeX
-- If `title.tex` is missing or empty (whitespace-only), the system falls back to the book-style formatted folder name
-
----
-
-### Override Example
-
-**Directory:**
-
-```
-00_introduction/parts/sections/01_np_vs_p/
-├── title.tex        # contains: $\alpha$ vs NP
-├── 1-1.tex
-├── 1-2.tex
-└── ...
-```
-
-**Generated output in `sections_index.tex`:**
-
-```latex
-\section{$\alpha$ vs NP}
-```
-
-**Without `title.tex`**, the folder name `01_np_vs_p` generates:
-
-```latex
-\section{NP vs P}
-```
+| `01_section-1`           | Section 1                    |
+| `02_np_vs_p`             | NP vs P                      |
+| `03_law_of_motion`       | Law of Motion                |
+| `04_in_the_beginning`    | In the Beginning             |

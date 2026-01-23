@@ -2,17 +2,19 @@
 Generate index files for the Introduction book.
 
 This module creates:
-- build/sections_index.tex which lists all sections with formatted titles and their subsection files
-- build/chapters_index.tex which lists chapter entry files in numeric order
+- build/chapters_index.tex which includes part.tex and chapter.tex files (structural spine)
+- build/sections_index.tex which includes chapter prologues and section content files (content spine)
+
+The introduction book uses real LaTeX \\part and \\chapter commands.
 """
 from pathlib import Path
 import re
 import sys
 
 
-def format_section_title(raw: str) -> str:
+def format_title(raw: str) -> str:
     """
-    Format a section folder name into a human-readable title for LaTeX display.
+    Format a folder name into a human-readable title for LaTeX display.
     
     Applies book-style capitalization rules:
     1. Strip numeric prefix if present (e.g., "01_")
@@ -32,7 +34,7 @@ def format_section_title(raw: str) -> str:
         "in_the_beginning" → "In the Beginning"
     
     Args:
-        raw: Raw section folder name (with or without numeric prefix)
+        raw: Raw folder name (with or without numeric prefix)
         
     Returns:
         Formatted title string
@@ -83,12 +85,126 @@ def die(msg: str):
     sys.exit(1)
 
 
+def generate_chapters_index(intro_dir: Path) -> Path:
+    """
+    Generate build/chapters_index.tex for the Introduction book.
+    
+    This file includes part.tex and chapter.tex files to establish the 
+    structural spine of the book with real \\part and \\chapter commands.
+    
+    Args:
+        intro_dir: Path to 00_introduction directory
+        
+    Returns:
+        Path to the generated chapters_index.tex file
+    """
+    # Enforce new parts/parts/ structure only - no backward compatibility
+    parts_dir = intro_dir / "parts"
+    parts_root = parts_dir / "parts"
+    appendix_dir = parts_dir / "appendix"
+    
+    if not parts_dir.exists():
+        die(f"Introduction must have parts/ subdirectory at {parts_dir}")
+    
+    build_dir = intro_dir / "build"
+    output_file = build_dir / "chapters_index.tex"
+    
+    # Ensure build directory exists
+    build_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate the index file
+    lines = []
+    lines.append("% Auto-generated chapter index for Introduction book")
+    lines.append("% DO NOT EDIT - this file is regenerated on each build")
+    lines.append("% Contains structural spine: \\part and \\chapter commands")
+    lines.append("")
+    
+    if not parts_root.exists() or not any(parts_root.iterdir()):
+        # No parts yet - write minimal file
+        output_file.write_text('\n'.join(lines) + '\n')
+        return output_file
+    
+    # Find all part folders matching NN_<name>
+    part_pattern = re.compile(r'^(\d{2})_(.+)$')
+    parts = []
+    
+    for item in parts_root.iterdir():
+        if not item.is_dir():
+            continue
+        match = part_pattern.match(item.name)
+        if match:
+            part_num = int(match.group(1))
+            parts.append((part_num, item))
+    
+    # Sort by part number
+    parts.sort(key=lambda x: x[0])
+    
+    for part_num, part_dir in parts:
+        # Include part.tex (contains \part{...} command)
+        part_tex = part_dir / "part.tex"
+        if part_tex.exists():
+            latex_path = f"parts/parts/{part_dir.name}/part.tex"
+            lines.append(f"\\input{{{latex_path}}}")
+            lines.append("")
+        
+        # Find all chapters in this part
+        chapters_dir = part_dir / "chapters"
+        if not chapters_dir.exists():
+            continue
+        
+        chapter_pattern = re.compile(r'^(\d{2})_(.+)$')
+        chapters = []
+        
+        for item in chapters_dir.iterdir():
+            if not item.is_dir():
+                continue
+            match = chapter_pattern.match(item.name)
+            if match:
+                chapter_num = int(match.group(1))
+                chapters.append((chapter_num, item))
+        
+        # Sort by chapter number
+        chapters.sort(key=lambda x: x[0])
+        
+        for chapter_num, chapter_dir in chapters:
+            # Include chapter.tex (contains \chapter{...} command and optional prologue)
+            chapter_tex = chapter_dir / "chapter.tex"
+            if chapter_tex.exists():
+                latex_path = f"parts/parts/{part_dir.name}/chapters/{chapter_dir.name}/chapter.tex"
+                lines.append(f"\\input{{{latex_path}}}")
+                lines.append("")
+    
+    # Check for appendix directory
+    if appendix_dir.exists() and appendix_dir.is_dir():
+        # Find all .tex files in appendix directory
+        appendix_files = sorted([f for f in appendix_dir.iterdir() if f.suffix == '.tex' and f.is_file()])
+        
+        if appendix_files:
+            # Add appendix section
+            lines.append("% Appendix section")
+            lines.append("\\appendix")
+            lines.append("")
+            
+            for appendix_file in appendix_files:
+                latex_path = f"parts/appendix/{appendix_file.name}"
+                lines.append(f"\\input{{{latex_path}}}")
+            
+            lines.append("")
+    
+    # Write the file
+    output_file.write_text('\n'.join(lines) + '\n')
+    return output_file
+
+
 def generate_introduction_index(intro_dir: Path) -> Path:
     r"""
     Generate build/sections_index.tex for the Introduction book.
     
-    Scans intro_dir/parts/sections/ for numbered section folders (01_name, 02_name, etc.) 
-    and creates a LaTeX file that includes all subsection files in order with formatted titles.
+    This is the content spine. It includes:
+    - Frontmatter files
+    - For each chapter: chapter.tex (prologue) followed by section files (1-*.tex)
+    - Appendix files
+    - Backmatter files
     
     Args:
         intro_dir: Path to 00_introduction directory
@@ -98,14 +214,13 @@ def generate_introduction_index(intro_dir: Path) -> Path:
         
     The generated file contains:
     - Frontmatter includes (title, preface, how_to_read, toc)
-    - \section{...} headers for each section folder (using book-style formatting or title.tex override)
-    - \input{...} commands for each subsection file (S-K.tex)
+    - For each part/chapter: chapter.tex followed by section files in order
     - \appendix and appendix includes if parts/appendix/ exists
     - Backmatter includes (scope_limits, closing_notes)
     """
-    # Enforce new parts/ structure only - no backward compatibility
+    # Enforce new parts/parts/ structure only - no backward compatibility
     parts_dir = intro_dir / "parts"
-    sections_dir = parts_dir / "sections"
+    parts_root = parts_dir / "parts"
     appendix_dir = parts_dir / "appendix"
     
     if not parts_dir.exists():
@@ -121,6 +236,7 @@ def generate_introduction_index(intro_dir: Path) -> Path:
     lines = []
     lines.append("% Auto-generated section index for Introduction book")
     lines.append("% DO NOT EDIT - this file is regenerated on each build")
+    lines.append("% Contains content spine: chapter prologues and section files")
     lines.append("")
     
     # Include frontmatter at the start
@@ -128,80 +244,79 @@ def generate_introduction_index(intro_dir: Path) -> Path:
         lines.append(f"\\input{{parts/frontmatter/{fname}}}")
     lines.append("")
     
-    if not sections_dir.exists():
-        # No sections directory - write minimal file with frontmatter/backmatter
+    if not parts_root.exists() or not any(parts_root.iterdir()):
+        # No parts directory - write minimal file with frontmatter/backmatter
         for fname in ["scope_limits", "closing_notes"]:
             lines.append(f"\\input{{parts/backmatter/{fname}}}")
         lines.append("")
         output_file.write_text('\n'.join(lines) + '\n')
         return output_file
     
-    # Find all section folders matching NN_<name>
-    section_pattern = re.compile(r'^(\d{2})_(.+)$')
-    sections = []
+    # Find all part folders matching NN_<name>
+    part_pattern = re.compile(r'^(\d{2})_(.+)$')
+    parts = []
     
-    for item in sections_dir.iterdir():
+    for item in parts_root.iterdir():
         if not item.is_dir():
             continue
-        match = section_pattern.match(item.name)
+        match = part_pattern.match(item.name)
         if match:
-            section_num = int(match.group(1))
-            section_name = match.group(2)
-            sections.append((section_num, section_name, item))
+            part_num = int(match.group(1))
+            parts.append((part_num, item))
     
-    # Sort by section number
-    sections.sort(key=lambda x: x[0])
+    # Sort by part number
+    parts.sort(key=lambda x: x[0])
     
-    for section_num, section_name, section_dir in sections:
-        # Check for title override file (for mathematical notation, etc.)
-        title_override_file = section_dir / "title.tex"
-        if title_override_file.exists() and title_override_file.is_file():
-            title_content = title_override_file.read_text(encoding='utf-8').strip()
-            if title_content:
-                # Validate: reject overrides containing structural commands
-                structural_commands = [r'\\section', r'\\subsection', r'\\chapter', r'\\input', r'\\include']
-                contains_structural = any(re.search(cmd, title_content) for cmd in structural_commands)
-                
-                if contains_structural:
-                    # Invalid override: emit warning and fall back
-                    print(f"Warning: title.tex in section '{section_dir.name}' contains structural commands; ignoring override",
-                          file=sys.stderr)
-                    display_name = format_section_title(section_name)
-                else:
-                    # Valid override: use content directly
-                    display_name = title_content
-            else:
-                # Empty override file: fall back to formatted name
-                display_name = format_section_title(section_name)
-        else:
-            # No override: use formatted folder name
-            display_name = format_section_title(section_name)
+    for part_num, part_dir in parts:
+        # Find all chapters in this part
+        chapters_dir = part_dir / "chapters"
+        if not chapters_dir.exists():
+            continue
         
-        lines.append(f"\\section{{{display_name}}}")
-        lines.append("")
+        chapter_pattern = re.compile(r'^(\d{2})_(.+)$')
+        chapters = []
         
-        # Find all subsection files S-K.tex where S matches section_num
-        subsection_pattern = re.compile(rf'^({section_num})-(\d+)\.tex$')
-        subsections = []
-        
-        for tex_file in section_dir.iterdir():
-            if not tex_file.is_file():
+        for item in chapters_dir.iterdir():
+            if not item.is_dir():
                 continue
-            match = subsection_pattern.match(tex_file.name)
+            match = chapter_pattern.match(item.name)
             if match:
-                subsection_num = int(match.group(2))
-                subsections.append((subsection_num, tex_file))
+                chapter_num = int(match.group(1))
+                chapters.append((chapter_num, item))
         
-        # Sort by subsection number
-        subsections.sort(key=lambda x: x[0])
+        # Sort by chapter number
+        chapters.sort(key=lambda x: x[0])
         
-        # Add input commands
-        for _, tex_file in subsections:
-            # Path relative to 00_introduction.tex
-            latex_path = f"parts/sections/{section_dir.name}/{tex_file.name}".replace('\\', '/')
-            lines.append(f"\\input{{{latex_path}}}")
-        
-        lines.append("")
+        for chapter_num, chapter_dir in chapters:
+            # Include chapter.tex first (contains \chapter and optional prologue)
+            chapter_tex = chapter_dir / "chapter.tex"
+            if chapter_tex.exists():
+                latex_path = f"parts/parts/{part_dir.name}/chapters/{chapter_dir.name}/chapter.tex"
+                lines.append(f"\\input{{{latex_path}}}")
+                lines.append("")
+            
+            # Find all section files N-K.tex where N matches chapter_num
+            section_pattern = re.compile(rf'^({chapter_num})-(\d+)\.tex$')
+            sections = []
+            
+            for tex_file in chapter_dir.iterdir():
+                if not tex_file.is_file():
+                    continue
+                match = section_pattern.match(tex_file.name)
+                if match:
+                    section_num = int(match.group(2))
+                    sections.append((section_num, tex_file))
+            
+            # Sort by section number
+            sections.sort(key=lambda x: x[0])
+            
+            # Add input commands for section files
+            for _, tex_file in sections:
+                # Path relative to 00_introduction.tex
+                latex_path = f"parts/parts/{part_dir.name}/chapters/{chapter_dir.name}/{tex_file.name}".replace('\\', '/')
+                lines.append(f"\\input{{{latex_path}}}")
+            
+            lines.append("")
     
     # Check for appendix directory
     if appendix_dir.exists() and appendix_dir.is_dir():
@@ -227,68 +342,4 @@ def generate_introduction_index(intro_dir: Path) -> Path:
     
     # Write the file
     output_file.write_text('\n'.join(lines) + '\n')
-    return output_file
-
-
-def generate_chapters_index(intro_dir: Path) -> Path:
-    """Generate build/chapters_index.tex listing chapter.tex files in order."""
-    # Enforce new parts/ structure only - no backward compatibility
-    parts_dir = intro_dir / "parts"
-    sections_dir = parts_dir / "sections"
-    appendix_dir = parts_dir / "appendix"
-    
-    if not parts_dir.exists():
-        die(f"Introduction must have parts/ subdirectory at {parts_dir}")
-    
-    build_dir = intro_dir / "build"
-    output_file = build_dir / "chapters_index.tex"
-
-    build_dir.mkdir(parents=True, exist_ok=True)
-
-    lines = [
-        "% Auto-generated chapter include list for Introduction book",
-        "% DO NOT EDIT - regenerated on each build",
-        "",
-    ]
-
-    if not sections_dir.exists():
-        output_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return output_file
-
-    section_pattern = re.compile(r"^(\d{2})_(.+)$")
-    sections = []
-
-    for item in sections_dir.iterdir():
-        if not item.is_dir():
-            continue
-        match = section_pattern.match(item.name)
-        if match:
-            section_num = int(match.group(1))
-            sections.append((section_num, item))
-
-    sections.sort(key=lambda x: x[0])
-
-    for section_num, section_dir in sections:
-        chapter_file = section_dir / "chapter.tex"
-        if chapter_file.exists():
-            latex_path = f"parts/sections/{section_dir.name}/chapter.tex"
-            lines.append(f"\\input{{{latex_path}}}")
-
-    # Check for appendix directory
-    if appendix_dir.exists() and appendix_dir.is_dir():
-        # Find all .tex files in appendix directory
-        appendix_files = sorted([f for f in appendix_dir.iterdir() if f.suffix == '.tex' and f.is_file()])
-        
-        if appendix_files:
-            # Add appendix section
-            lines.append("")
-            lines.append("% Appendix section")
-            lines.append("\\appendix")
-            lines.append("")
-            
-            for appendix_file in appendix_files:
-                latex_path = f"parts/appendix/{appendix_file.name}"
-                lines.append(f"\\input{{{latex_path}}}")
-
-    output_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return output_file
