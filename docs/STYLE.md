@@ -89,7 +89,7 @@ The baseline is intentionally minimal and expected to remain stable.
 Every document entry file includes:
 
 ```tex
-\input{shared/preamble.tex}
+\input{../shared/preamble.tex}
 ```
 
 The preamble includes shared files in a fixed order:
@@ -119,7 +119,7 @@ Long-form documents use the `book` class to support:
 ```tex
 \documentclass[12pt]{book}
 
-\input{shared/preamble.tex}
+\input{../shared/preamble.tex}
 
 \title{Introduction}
 
@@ -179,7 +179,7 @@ They are intended to be:
 ```tex
 \documentclass{article}
 
-\input{shared/preamble.tex}
+\input{../shared/preamble.tex}
 
 \title{Paper Title}
 \author{Author Name}
